@@ -58,6 +58,14 @@ public class SpuController {
         return R.ok();
     }
 
+    @Operation(summary = "热门商品分页", description = "按销量降序，仅返回上架商品")
+    @GetMapping("/hot")
+    public R<Page<Spu>> hot(
+            @Parameter(description = "页码") @RequestParam(defaultValue = "1") int pageNum,
+            @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int pageSize) {
+        return R.ok(spuService.pageHotProducts(pageNum, pageSize));
+    }
+
     @Operation(summary = "删除SPU", description = "逻辑删除")
     @DeleteMapping("/{id}")
     public R<Object> delete(@Parameter(description = "SPU ID") @PathVariable Long id) {

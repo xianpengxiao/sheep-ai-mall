@@ -19,4 +19,6 @@ public interface CategoryService extends IService<Category> {
 
     /** 新增或更新分类，自动处理sort_order */
     boolean saveOrUpdateCategory(Category category);
+
+    boolean removeById(Long id);
 }

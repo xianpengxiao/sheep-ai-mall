@@ -43,7 +43,7 @@ public class ElasticsearchConfig {
     @Value("${spring.elasticsearch.password:}")
     private String password;
 
-    /** 手动创建 ElasticsearchClient Bean，注册自定义 LocalDateTime 序列化/反序列化 */
+    /** 创建 ElasticsearchClient Bean，注册自定义 LocalDateTime 序列化/反序列化 */
     @Bean
     public ElasticsearchClient elasticsearchClient() {
         JavaTimeModule javaTimeModule = new JavaTimeModule();

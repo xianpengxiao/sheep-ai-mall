@@ -53,5 +53,4 @@ com.xs.sheepaimall
 - **异常处理**: 业务异常抛 `BizException`，由 `GlobalExceptionHandler` 转为 `R.fail`
 - **分页**: 使用 MyBatis-Plus `Page<T>`，分页插件已配置 MySQL 方言
 - **主键策略**: 雪花算法 `ASSIGN_ID`（在 `application.yml` 中配置）
-- **逻辑删除**: 字段名 `deleted`，0=未删除 1=已删除
 - **数据库**: 连接 `sheep_ai_mall` 库，配置在 `application.yml`

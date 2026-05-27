@@ -7,6 +7,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.xs.sheepaimall.common.BizException;
+import com.xs.sheepaimall.common.CacheConstants;
+import com.xs.sheepaimall.common.CacheHelper;
 import com.xs.sheepaimall.common.ResultCode;
 import com.xs.sheepaimall.dto.SkuSaveDTO;
 import com.xs.sheepaimall.dto.SpuQueryDTO;
@@ -36,6 +38,9 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
     @Resource
     private CategoryService categoryService;
 
+    @Resource
+    private CacheHelper cacheHelper;
+
     @Override
     public Page<Spu> pageQuery(SpuQueryDTO dto) {
         LambdaQueryWrapper<Spu> wrapper = new LambdaQueryWrapper<Spu>()
@@ -43,7 +48,6 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
                 .like(StrUtil.isNotBlank(dto.getKeyword()), Spu::getName, dto.getKeyword())
                 .eq(dto.getStatus() != null, Spu::getStatus, dto.getStatus());
 
-        // 排序
         if ("sales_count".equals(dto.getOrderBy())) {
             wrapper.orderByDesc(Spu::getSalesCount);
         } else {
@@ -55,20 +59,33 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
 
     @Override
     public SpuVO getDetailById(Long id) {
+        String cacheKey = CacheConstants.SPU_DETAIL + "::" + id;
+
+        String cachedJson = cacheHelper.getOrFetch(cacheKey,
+                () -> {
+                    SpuVO vo = loadDetailFromDb(id);
+                    if (vo == null) return null;
+                    return JSONUtil.toJsonStr(vo);
+                },
+                CacheConstants.SPU_DETAIL_TTL);
+
+        if (cachedJson == null) return null;
+        return JSONUtil.toBean(cachedJson, SpuVO.class);
+    }
+
+    /** 从数据库加载商品详情（不含缓存逻辑） */
+    private SpuVO loadDetailFromDb(Long id) {
         Spu spu = this.getById(id);
         if (spu == null) {
             throw new BizException(ResultCode.NOT_FOUND.getCode(), "商品不存在");
         }
-
         SpuVO vo = toSpuVO(spu);
 
-        // 关联分类名称
         Category category = categoryService.getById(spu.getCategoryId());
         if (category != null) {
             vo.setCategoryName(category.getName());
         }
 
-        // 关联SKU列表
         List<Sku> skuList = skuService.listBySpuId(spu.getId());
         vo.setSkuList(skuList.stream().map(this::toSkuVO).collect(Collectors.toList()));
 
@@ -76,17 +93,34 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
     }
 
     @Override
+    public Page<Spu> pageHotProducts(int pageNum, int pageSize) {
+        String cacheKey = CacheConstants.SPU_HOT_PAGE + "::" + pageNum + "::" + pageSize;
+
+        String cachedJson = cacheHelper.getOrFetch(cacheKey,
+                () -> {
+                    Page<Spu> page = this.page(
+                            new Page<>(pageNum, pageSize),
+                            new LambdaQueryWrapper<Spu>()
+                                    .eq(Spu::getStatus, 1)
+                                    .orderByDesc(Spu::getSalesCount));
+                    return page.getRecords().isEmpty() ? null : JSONUtil.toJsonStr(page);
+                },
+                CacheConstants.SPU_HOT_PAGE_TTL);
+
+        if (cachedJson == null) return new Page<>(pageNum, pageSize);
+        return JSONUtil.toBean(cachedJson, Page.class);
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public SpuVO saveWithSku(SpuSaveDTO dto) {
         Spu spu = new Spu();
         BeanUtil.copyProperties(dto, spu);
-        // imageList → JSON 字符串存储
         if (dto.getImageList() != null) {
             spu.setImageList(JSONUtil.toJsonStr(dto.getImageList()));
         }
         this.save(spu);
 
-        // 保存SKU列表
         if (dto.getSkuList() != null && !dto.getSkuList().isEmpty()) {
             List<Sku> skuList = dto.getSkuList().stream()
                     .map(this::toSkuEntity)
@@ -95,6 +129,8 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
             skuService.batchSaveOrUpdate(spu.getId(), skuList);
         }
 
+        // 新增商品后清除热门分页缓存
+        cacheHelper.evictSpuHotPage();
         return getDetailById(spu.getId());
     }
 
@@ -113,7 +149,6 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
         }
         this.updateById(spu);
 
-        // 全量替换SKU
         if (dto.getSkuList() != null) {
             List<Sku> skuList = dto.getSkuList().stream()
                     .map(this::toSkuEntity)
@@ -122,6 +157,9 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
             skuService.batchSaveOrUpdate(spu.getId(), skuList);
         }
 
+        // 更新后清除缓存
+        cacheHelper.evictSpuDetail(dto.getId());
+        cacheHelper.evictSpuHotPage();
         return getDetailById(spu.getId());
     }
 
@@ -130,10 +168,26 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
         Spu spu = new Spu();
         spu.setId(id);
         spu.setStatus(status);
-        return this.updateById(spu);
+        boolean ok = this.updateById(spu);
+        // 状态变更后清除缓存
+        cacheHelper.evictSpuDetail(id);
+        cacheHelper.evictSpuHotPage();
+        return ok;
     }
 
-    /** DTO → Sku Entity */
+    /** 重写逻辑删除，同时清除缓存 */
+    @Override
+    public boolean removeById(Long id) {
+        boolean ok = super.removeById(id);
+        if (ok) {
+            cacheHelper.evictSpuDetail(id);
+            cacheHelper.evictSpuHotPage();
+        }
+        return ok;
+    }
+
+    // ============== 内部转换方法 ==============
+
     private Sku toSkuEntity(SkuSaveDTO dto) {
         Sku sku = new Sku();
         BeanUtil.copyProperties(dto, sku);
@@ -143,7 +197,6 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
         return sku;
     }
 
-    /** Spu Entity → VO */
     private SpuVO toSpuVO(Spu spu) {
         SpuVO vo = new SpuVO();
         BeanUtil.copyProperties(spu, vo);
@@ -153,7 +206,6 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
         return vo;
     }
 
-    /** Sku Entity → VO */
     private SkuVO toSkuVO(Sku sku) {
         SkuVO vo = new SkuVO();
         BeanUtil.copyProperties(sku, vo);

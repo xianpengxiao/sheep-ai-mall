@@ -33,7 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/** 商品搜索 Service 实现 — Elasticsearch（仅配置 spring.elasticsearch.uris 后生效） */
+/** 商品搜索 Service 实现 — Elasticsearch */
 @Slf4j
 @Service
 @ConditionalOnProperty(name = "spring.elasticsearch.uris")
@@ -63,15 +63,6 @@ public class ProductSearchServiceImpl implements ProductSearchService {
 
         int pageNum = Math.max(dto.getPageNum() != null ? dto.getPageNum() : 1, 1);
         int pageSize = dto.getPageSize() != null ? dto.getPageSize() : 20;
-        log.info("==================== 搜索开始 ====================");
-        log.info("前端传入参数 dto: {}", dto);
-        log.info("keyword: {}", dto.getKeyword());
-        log.info("categoryId: {}", dto.getCategoryId());
-        log.info("minPrice: {}", dto.getMinPrice());
-        log.info("maxPrice: {}", dto.getMaxPrice());
-        log.info("sortBy: {}", dto.getSortBy());
-        log.info("pageNum: {}", pageNum);
-        log.info("pageSize: {}", pageSize);
         try {
             SearchResponse<SpuDocument> response = esClient.search(sr -> sr
                             .index("spu_index")
@@ -175,7 +166,7 @@ public class ProductSearchServiceImpl implements ProductSearchService {
         for (int i = 1; i <= pages; i++) {
             Page<Spu> spuPage = spuService.page(
                     new Page<>(i, SYNC_BATCH_SIZE),
-                    new LambdaQueryWrapper<Spu>().eq(Spu::getDeleted, 0));
+                    new LambdaQueryWrapper<>());
             List<SpuDocument> docs = spuPage.getRecords().stream()
                     .map(this::toDocument)
                     .collect(Collectors.toList());
@@ -188,7 +179,7 @@ public class ProductSearchServiceImpl implements ProductSearchService {
     @Override
     public void syncSpuToEs(Long spuId) {
         Spu spu = spuService.getById(spuId);
-        if (spu == null || spu.getDeleted() == 1) {
+        if (spu == null) {
             spuDocRepo.deleteById(spuId);
             return;
         }

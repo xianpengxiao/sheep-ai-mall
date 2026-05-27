@@ -30,10 +30,6 @@ public class Member {
     @Schema(description = "状态：1=正常 0=禁用")
     private Integer status;
 
-    @Schema(description = "逻辑删除：0=否 1=是")
-    @TableLogic
-    private Integer deleted;
-
     @Schema(description = "创建时间")
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;

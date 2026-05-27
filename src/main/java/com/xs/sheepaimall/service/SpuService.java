@@ -26,4 +26,9 @@ public interface SpuService extends IService<Spu> {
 
     /** 上架/下架 */
     boolean updateStatus(Long id, Integer status);
+
+    /** 热门商品分页查询（按销量降序，仅上架商品） */
+    Page<Spu> pageHotProducts(int pageNum, int pageSize);
+
+    boolean removeById(Long id);
 }

@@ -30,10 +30,6 @@ public class Cart {
     @Schema(description = "是否选中：1=是 0=否")
     private Integer selected;
 
-    @Schema(description = "逻辑删除：0=否 1=是")
-    @TableLogic
-    private Integer deleted;
-
     @Schema(description = "创建时间")
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;

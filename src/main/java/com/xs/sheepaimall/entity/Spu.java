@@ -42,10 +42,6 @@ public class Spu {
     @Schema(description = "销量")
     private Integer salesCount;
 
-    @Schema(description = "逻辑删除：0=否 1=是")
-    @TableLogic
-    private Integer deleted;
-
     @Schema(description = "创建时间")
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
