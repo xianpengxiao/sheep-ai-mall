@@ -7,34 +7,45 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.xs.sheepaimall.common.BizException;
+import com.xs.sheepaimall.common.RabbitMQConstants;
 import com.xs.sheepaimall.common.ResultCode;
 import com.xs.sheepaimall.dto.OrderCreateDTO;
 import com.xs.sheepaimall.dto.OrderItemDTO;
+import com.xs.sheepaimall.dto.StockDeductMessage;
 import com.xs.sheepaimall.entity.*;
 import com.xs.sheepaimall.mapper.OrderInfoMapper;
 import com.xs.sheepaimall.service.*;
 import com.xs.sheepaimall.vo.OrderInfoVO;
 import com.xs.sheepaimall.vo.OrderItemVO;
 import jakarta.annotation.Resource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 订单 Service —— 下单事务管控。
+ * 订单 Service —— 结合 RabbitMQ 实现库存锁定/释放。
  *
- * 流程：校验商品有效性 → 原子扣减库存 → 生成订单+明细 → 清空购物车
- * 任何环节异常自动回滚全部操作。
+ * 流程：
+ * 1. 下单 → 校验 + 保存订单 → 发送库存锁定消息到 MQ（异步扣库存）
+ * 2. 支付成功 → 订单状态变为已支付，锁定转为正式扣减（无需额外库存操作）
+ * 3. 取消订单 → 若库存已锁定则发送释放消息到 MQ（异步还库存），若尚未锁定则直接取消
  */
 @Service
 public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> implements OrderService {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderServiceImpl.class);
 
     @Resource
     private OrderItemService orderItemService;
@@ -51,6 +62,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private RabbitTemplate rabbitTemplate;
+
     // ==================== 下单 ====================
 
     @Override
@@ -63,21 +77,13 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
 
         Long memberId = dto.getMemberId();
 
-        // ===== 1. 校验所有商品有效性（fail-fast，不产生脏数据） =====
+        // ===== 1. 校验商品有效性（预校验库存，fail-fast） =====
         List<ValidatedItem> validatedItems = new ArrayList<>();
         for (OrderItemDTO item : items) {
             validatedItems.add(validateItem(item));
         }
 
-        // ===== 2. 原子扣减库存 =====
-        for (int i = 0; i < validatedItems.size(); i++) {
-            ValidatedItem vi = validatedItems.get(i);
-            OrderItemDTO item = items.get(i);
-            // deductStock 内部使用 WHERE stock >= quantity 原子扣减，库存不足自动抛异常
-            skuService.deductStock(item.getSkuId(), item.getQuantity());
-        }
-
-        // ===== 3. 计算金额、生成订单 =====
+        // ===== 2. 计算金额、生成订单 =====
         BigDecimal totalAmount = validatedItems.stream()
                 .map(vi -> vi.sku.getPrice().multiply(BigDecimal.valueOf(vi.quantity)))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -86,15 +92,15 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         order.setOrderNo(generateOrderNo());
         order.setMemberId(memberId);
         order.setTotalAmount(totalAmount);
-        order.setPayAmount(BigDecimal.ZERO); // 初始值，支付回调时由 PaymentService 更新
-        order.setStatus(0);
+        order.setPayAmount(BigDecimal.ZERO);
+        order.setStatus(0); // 待支付
         order.setReceiverName(dto.getReceiverName());
         order.setReceiverPhone(dto.getReceiverPhone());
         order.setReceiverAddress(dto.getReceiverAddress());
         order.setRemark(dto.getRemark());
         this.save(order);
 
-        // ===== 4. 保存订单明细（价格快照） =====
+        // ===== 3. 保存订单明细（价格快照） =====
         List<OrderItem> orderItems = new ArrayList<>();
         for (int i = 0; i < validatedItems.size(); i++) {
             ValidatedItem vi = validatedItems.get(i);
@@ -113,15 +119,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         }
         orderItemService.saveBatch(orderItems);
 
-        // ===== 5. 更新SPU销量 =====
-        for (ValidatedItem vi : validatedItems) {
-            Spu updateSpu = new Spu();
-            updateSpu.setId(vi.spu.getId());
-            updateSpu.setSalesCount(vi.spu.getSalesCount() + vi.quantity);
-            spuService.updateById(updateSpu);
-        }
-
-        // ===== 6. 清空购物车中已下单的SKU（MySQL逻辑删除 + Redis缓存清除） =====
+        // ===== 4. 清空购物车中已下单的SKU =====
         List<Long> orderedSkuIds = items.stream()
                 .map(OrderItemDTO::getSkuId)
                 .collect(Collectors.toList());
@@ -129,17 +127,17 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
                 .eq(Cart::getMemberId, memberId)
                 .in(Cart::getSkuId, orderedSkuIds));
         if (!cartItems.isEmpty()) {
-            // MySQL 逻辑删除已下单的购物车条目
             cartService.removeByIds(cartItems.stream().map(Cart::getId).collect(Collectors.toList()));
-            // 清除 Redis 购物车缓存，下次查询时从 MySQL 重建（自动过滤已删除条目）
             try {
                 stringRedisTemplate.delete("cart::" + memberId);
             } catch (DataAccessException ignored) {
-                // Redis 不可用时忽略，MySQL 已正确
             }
         }
 
-        // ===== 7. 组装返回VO =====
+        // ===== 5. 发送库存锁定消息到 RabbitMQ（异步锁定库存） =====
+        sendStockLockMessage(order.getId(), validatedItems);
+
+        // ===== 6. 组装VO =====
         return buildOrderVO(order, orderItems);
     }
 
@@ -177,7 +175,6 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         if (order == null) {
             throw new BizException(ResultCode.NOT_FOUND.getCode(), "订单不存在");
         }
-        // 仅待支付状态可取消
         if (order.getStatus() == null || order.getStatus() != 0) {
             throw new BizException("仅待支付状态的订单可取消，当前状态：" + getStatusText(order.getStatus()));
         }
@@ -186,24 +183,22 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         List<OrderItem> items = orderItemService.list(
                 new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, orderId));
 
-        // 3. 回滚库存（原子操作）
-        for (OrderItem item : items) {
-            boolean restored = skuService.update(new LambdaUpdateWrapper<Sku>()
-                    .eq(Sku::getId, item.getSkuId())
-                    .setSql("stock = stock + " + item.getQuantity()));
-            if (!restored) {
-                throw new BizException("库存回滚失败 skuId=" + item.getSkuId());
-            }
+        // 3. 检查库存锁定状态，若已锁定则释放
+        String lockStatusKey = RabbitMQConstants.STOCK_LOCKED_STATUS_PREFIX + orderId;
+        String lockStatus = stringRedisTemplate.opsForValue().get(lockStatusKey);
+
+        if ("LOCKED".equals(lockStatus)) {
+            // 库存已被锁定 → 发送释放消息到 MQ
+            sendStockReleaseMessage(orderId, items);
+            stringRedisTemplate.delete(lockStatusKey);
+            log.info("库存已锁定，发送释放消息 orderId={}", orderId);
+        } else {
+            // 尚未锁定或锁定消息尚未消费 → 无需回滚库存
+            // 锁定消费者会检查订单状态，发现已取消则跳过
+            log.info("库存尚未锁定，直接取消订单 orderId={}", orderId);
         }
 
-        // 4. 回滚销量
-        for (OrderItem item : items) {
-            spuService.update(new LambdaUpdateWrapper<Spu>()
-                    .eq(Spu::getId, item.getSpuId())
-                    .setSql("sales_count = sales_count - " + item.getQuantity()));
-        }
-
-        // 5. 更新订单状态为已取消
+        // 4. 更新订单状态为已取消
         order.setStatus(4);
         order.setCancelTime(LocalDateTime.now());
         boolean ok = this.updateById(order);
@@ -212,57 +207,6 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         }
 
         return buildOrderVO(order, items);
-    }
-
-    // ==================== 内部方法 ====================
-
-    /** 校验单条订单明细：SPU 上架、SKU 启用、SKU 归属 SPU、库存充足 */
-    private ValidatedItem validateItem(OrderItemDTO item) {
-        Long spuId = item.getSpuId();
-        Long skuId = item.getSkuId();
-        int qty = item.getQuantity() != null ? item.getQuantity() : 1;
-
-        if (qty <= 0) {
-            throw new BizException("商品数量必须大于0");
-        }
-
-        // 校验 SPU 存在且上架
-        Spu spu = spuService.getById(spuId);
-        if (spu == null) {
-            throw new BizException(ResultCode.NOT_FOUND.getCode(), "商品[SPU:" + spuId + "]不存在");
-        }
-        if (spu.getStatus() == null || spu.getStatus() != 1) {
-            throw new BizException("商品[" + spu.getName() + "]已下架");
-        }
-
-        // 校验 SKU 存在、启用、归属正确
-        Sku sku = skuService.getById(skuId);
-        if (sku == null) {
-            throw new BizException(ResultCode.NOT_FOUND.getCode(), "商品规格[SKU:" + skuId + "]不存在");
-        }
-        if (sku.getStatus() == null || sku.getStatus() != 1) {
-            throw new BizException("商品规格[" + sku.getSkuName() + "]已禁用");
-        }
-        if (!sku.getSpuId().equals(spuId)) {
-            throw new BizException("SKU[" + skuId + "]不属于SPU[" + spuId + "]");
-        }
-        // 库存校验（扣减前最后一次检查）
-        if (sku.getStock() < qty) {
-            throw new BizException("商品[" + sku.getSkuName() + "]库存不足，剩余" + sku.getStock());
-        }
-
-        ValidatedItem vi = new ValidatedItem();
-        vi.spu = spu;
-        vi.sku = sku;
-        vi.quantity = qty;
-        return vi;
-    }
-
-    /** 生成订单编号：yyyyMMddHHmmss + 6位随机数 */
-    private String generateOrderNo() {
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-        String random = RandomUtil.randomNumbers(6);
-        return timestamp + random;
     }
 
     // ==================== 支付状态更新（支付回调专用） ====================
@@ -279,6 +223,122 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         if (!ok) {
             throw new BizException("更新订单支付状态失败 orderId=" + orderId);
         }
+        // 支付成功，清除锁定状态记录（锁定已转为正式扣减）
+        if (status != null && status == 1) {
+            stringRedisTemplate.delete(RabbitMQConstants.STOCK_LOCKED_STATUS_PREFIX + orderId);
+            log.info("支付成功，清除库存锁定记录 orderId={}", orderId);
+        }
+    }
+
+    // ==================== 内部方法 ====================
+
+    /** 校验单条订单明细：SPU 上架、SKU 启用、归属正确、库存预检 */
+    private ValidatedItem validateItem(OrderItemDTO item) {
+        Long spuId = item.getSpuId();
+        Long skuId = item.getSkuId();
+        int qty = item.getQuantity() != null ? item.getQuantity() : 1;
+
+        if (qty <= 0) {
+            throw new BizException("商品数量必须大于0");
+        }
+
+        Spu spu = spuService.getById(spuId);
+        if (spu == null) {
+            throw new BizException(ResultCode.NOT_FOUND.getCode(), "商品[SPU:" + spuId + "]不存在");
+        }
+        if (spu.getStatus() == null || spu.getStatus() != 1) {
+            throw new BizException("商品[" + spu.getName() + "]已下架");
+        }
+
+        Sku sku = skuService.getById(skuId);
+        if (sku == null) {
+            throw new BizException(ResultCode.NOT_FOUND.getCode(), "商品规格[SKU:" + skuId + "]不存在");
+        }
+        if (sku.getStatus() == null || sku.getStatus() != 1) {
+            throw new BizException("商品规格[" + sku.getSkuName() + "]已禁用");
+        }
+        if (!sku.getSpuId().equals(spuId)) {
+            throw new BizException("SKU[" + skuId + "]不属于SPU[" + spuId + "]");
+        }
+        // 预校验库存（锁定消费者会做最终原子判断）
+        if (sku.getStock() < qty) {
+            throw new BizException("商品[" + sku.getSkuName() + "]库存不足，剩余" + sku.getStock());
+        }
+
+        ValidatedItem vi = new ValidatedItem();
+        vi.spu = spu;
+        vi.sku = sku;
+        vi.quantity = qty;
+        return vi;
+    }
+
+    /** 发送库存锁定消息到 MQ */
+    private void sendStockLockMessage(Long orderId, List<ValidatedItem> validatedItems) {
+        StockDeductMessage message = buildStockMessage(orderId, validatedItems);
+        CorrelationData correlationData = new CorrelationData(message.getMessageId());
+
+        rabbitTemplate.convertAndSend(
+                RabbitMQConstants.STOCK_EXCHANGE,
+                RabbitMQConstants.STOCK_LOCK_ROUTING_KEY,
+                message,
+                correlationData);
+
+        log.info("库存锁定消息已发送 orderId={} messageId={}", orderId, message.getMessageId());
+    }
+
+    /** 发送库存释放消息到 MQ（取消订单时调用） */
+    private void sendStockReleaseMessage(Long orderId, List<OrderItem> items) {
+        StockDeductMessage message = new StockDeductMessage();
+        message.setMessageId(UUID.randomUUID().toString());
+        message.setOrderId(orderId);
+        message.setCreateTime(LocalDateTime.now());
+
+        List<StockDeductMessage.StockDeductItem> msgItems = items.stream()
+                .map(it -> {
+                    StockDeductMessage.StockDeductItem di = new StockDeductMessage.StockDeductItem();
+                    di.setSpuId(it.getSpuId());
+                    di.setSkuId(it.getSkuId());
+                    di.setQuantity(it.getQuantity());
+                    return di;
+                })
+                .collect(Collectors.toList());
+        message.setItems(msgItems);
+
+        CorrelationData correlationData = new CorrelationData(message.getMessageId());
+        rabbitTemplate.convertAndSend(
+                RabbitMQConstants.STOCK_EXCHANGE,
+                RabbitMQConstants.STOCK_RELEASE_ROUTING_KEY,
+                message,
+                correlationData);
+
+        log.info("库存释放消息已发送 orderId={} messageId={}", orderId, message.getMessageId());
+    }
+
+    /** 构建 StockDeductMessage */
+    private StockDeductMessage buildStockMessage(Long orderId, List<ValidatedItem> validatedItems) {
+        StockDeductMessage message = new StockDeductMessage();
+        message.setMessageId(UUID.randomUUID().toString());
+        message.setOrderId(orderId);
+        message.setCreateTime(LocalDateTime.now());
+
+        List<StockDeductMessage.StockDeductItem> msgItems = validatedItems.stream()
+                .map(vi -> {
+                    StockDeductMessage.StockDeductItem di = new StockDeductMessage.StockDeductItem();
+                    di.setSpuId(vi.spu.getId());
+                    di.setSkuId(vi.sku.getId());
+                    di.setQuantity(vi.quantity);
+                    return di;
+                })
+                .collect(Collectors.toList());
+        message.setItems(msgItems);
+        return message;
+    }
+
+    /** 生成订单编号：yyyyMMddHHmmss + 6位随机数 */
+    private String generateOrderNo() {
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        String random = RandomUtil.randomNumbers(6);
+        return timestamp + random;
     }
 
     /** 组装 OrderInfoVO */
@@ -298,7 +358,6 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         return vo;
     }
 
-    /** 订单状态文本 */
     private String getStatusText(Integer status) {
         if (status == null) return "未知";
         return switch (status) {
