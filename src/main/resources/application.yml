@@ -1,0 +1,110 @@
+spring:
+  profiles:
+    active: dev
+  application:
+    name: SheepAIMall
+
+  # 数据源配置
+  datasource:
+    driver-class-name: ${sheep.datasource.driver-class-name}
+    url: jdbc:mysql://${sheep.datasource.host}:${sheep.datasource.port}/${sheep.datasource.database}?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: ${sheep.datasource.username}
+    password: ${sheep.datasource.password}
+
+  # Redis 缓存配置
+  data:
+    redis:
+      host: ${sheep.redis.host}
+      port: ${sheep.redis.port}
+      password: ${sheep.redis.password}
+      database: ${sheep.redis.database}
+      timeout: ${sheep.redis.timeout}
+      lettuce:
+        pool:
+          max-active: ${sheep.redis.max-active}
+          max-idle: ${sheep.redis.max-idle}
+          min-idle: ${sheep.redis.min-idle}
+          max-wait: ${sheep.redis.max-wait}
+  # RabbitMQ 消息队列配置
+  rabbitmq:
+    host: ${sheep.rabbitmq.host}
+    port: ${sheep.rabbitmq.port}
+    username: ${sheep.rabbitmq.username}
+    password: ${sheep.rabbitmq.password}
+    virtual-host: ${sheep.rabbitmq.virtual-host}
+    # 生产者确认
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    # 消费者手动确认
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 1
+        retry:
+          enabled: false  # 关闭 Spring 自动重试，使用自定义 DLX 重试
+
+  # 缓存配置
+  cache:
+    type: redis
+    redis:
+      time-to-live: 30m
+      cache-null-values: true
+
+  # Elasticsearch 配置
+  elasticsearch:
+    uris: ${sheep.elasticsearch.uris}
+    connection-timeout: ${sheep.elasticsearch.connection-timeout}
+    socket-timeout: ${sheep.elasticsearch.socket-timeout}
+
+  # Spring AI DeepSeek 大模型配置
+  ai:
+    openai:
+      base-url: https://api.deepseek.com
+      api-key: ${sheep.ai.deepseek.api-key}
+      chat:
+        options:
+          model: deepseek-chat
+  # JSON 日期格式
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  # 实体类扫描包（多个用逗号分隔）
+  type-aliases-package: com.xs.sheepaimall.entity
+  # Mapper XML 文件位置
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    # 下划线转驼峰
+    map-underscore-to-camel-case: true
+    # SQL 日志
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      # 主键策略：ASSIGN_ID(雪花算法)
+      id-type: ASSIGN_ID
+
+# 微信支付 API v3 配置（enabled=true 且 merchant-id 非空时才加载）
+wechat:
+  pay:
+    enabled: false
+    merchant-id: ${sheep.wechat.pay.merchant-id}
+    merchant-serial-number: ${sheep.wechat.pay.merchant-serial-number}
+    private-key-path: ${sheep.wechat.pay.private-key-path}
+    private-key-content: ${sheep.wechat.pay.private-key-content}
+    api-v3-key: ${sheep.wechat.pay.api-v3-key}
+    notify-url: ${sheep.wechat.pay.notify-url}
+
+# Knife4j 文档
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+knife4j:
+  enable: true
+  setting:
+    enable-swagger-models: true
