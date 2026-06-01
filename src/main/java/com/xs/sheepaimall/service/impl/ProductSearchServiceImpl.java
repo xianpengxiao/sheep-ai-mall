@@ -87,6 +87,16 @@ public class ProductSearchServiceImpl implements ProductSearchService {
                     if (subTitleHL != null && !subTitleHL.isEmpty())
                         vo.setSubTitleHighlight(subTitleHL.get(0));
                 }
+                // ES 分词器未返回高亮时（如单字搜索），Java 手动标记高亮兜底
+                String keyword = dto.getKeyword();
+                if (StrUtil.isNotBlank(keyword)) {
+                    if (StrUtil.isBlank(vo.getNameHighlight()) && StrUtil.isNotBlank(doc.getName())) {
+                        vo.setNameHighlight(wrapHighlight(doc.getName(), keyword));
+                    }
+                    if (StrUtil.isBlank(vo.getSubTitleHighlight()) && StrUtil.isNotBlank(doc.getSubTitle())) {
+                        vo.setSubTitleHighlight(wrapHighlight(doc.getSubTitle(), keyword));
+                    }
+                }
                 records.add(vo);
             }
 
@@ -142,7 +152,7 @@ public class ProductSearchServiceImpl implements ProductSearchService {
         }));
     }
 
-    /** 构建高亮 — 用 Map 显式传多个字段，避免链式 .fields() 被底层覆盖 */
+    /** 构建高亮 */
     private Highlight buildHighlight() {
         return Highlight.of(h -> h.fields(Map.of(
                 "name", HighlightField.of(
@@ -150,6 +160,27 @@ public class ProductSearchServiceImpl implements ProductSearchService {
                 "subTitle", HighlightField.of(
                         hf -> hf.preTags("<em>").postTags("</em>").fragmentSize(50).numberOfFragments(1))
         )));
+    }
+
+    /** Java 手动对关键词加 <em> 高亮标签 — 兜底 ES 分词器无法产出高亮的场景（如单字搜索） */
+    private String wrapHighlight(String text, String keyword) {
+        if (StrUtil.isBlank(text) || StrUtil.isBlank(keyword)) return text;
+        String lowerText = text.toLowerCase();
+        String lowerKw = keyword.toLowerCase();
+        StringBuilder sb = new StringBuilder();
+        int idx = 0;
+        int kwLen = keyword.length();
+        while (idx <= text.length() - kwLen) {
+            if (lowerText.startsWith(lowerKw, idx)) {
+                sb.append("<em>").append(text, idx, idx + kwLen).append("</em>");
+                idx += kwLen;
+            } else {
+                sb.append(text.charAt(idx));
+                idx++;
+            }
+        }
+        sb.append(text.substring(idx));
+        return sb.toString();
     }
 
     /** 构建排序 */
