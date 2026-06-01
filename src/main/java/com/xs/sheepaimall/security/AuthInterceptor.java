@@ -54,6 +54,11 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // 游客可读路径：GET 请求直接放行
+        if (isPublicReadPath(request)) {
+            return true;
+        }
+
         String token = extractToken(request);
         if (token == null) {
             throw new UnauthorizedException("未提供认证令牌，请先登录");
@@ -116,6 +121,22 @@ public class AuthInterceptor implements HandlerInterceptor {
             return header.substring(TOKEN_PREFIX.length()).trim();
         }
         return null;
+    }
+
+    /**
+     * 判断是否为游客可访问的只读路径（仅 GET 请求放行，POST/PUT/DELETE 仍需认证）
+     */
+    private boolean isPublicReadPath(HttpServletRequest request) {
+        if (!"GET".equalsIgnoreCase(request.getMethod())) {
+            return false;
+        }
+        String uri = request.getRequestURI();
+        // 分类详情 /api/category/123
+        // SPU 详情 /api/spu/123
+        // SKU 详情 /api/sku/123
+        return uri.matches("^/api/category/\\d+$")
+                || uri.matches("^/api/spu/\\d+$")
+                || uri.matches("^/api/sku/\\d+$");
     }
 
     /**

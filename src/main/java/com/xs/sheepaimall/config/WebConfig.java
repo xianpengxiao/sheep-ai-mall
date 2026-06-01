@@ -23,7 +23,14 @@ public class WebConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/**")              // 拦截所有 API 请求
                 .excludePathPatterns(                    // 白名单：无需认证
                         "/api/auth/login",               // 登录接口
-                        "/api/auth/register",            // 注册接口（预留）
+                        "/api/auth/register",            // 注册接口
+                        "/api/payment/notify",           // 微信支付回调（由微信服务器调用，无 JWT）
+                        "/api/category/tree",            // 分类树（游客可浏览）
+                        "/api/category/children/**",     // 子分类（游客可浏览）
+                        "/api/spu/page",                 // 商品分页（游客可浏览）
+                        "/api/spu/hot",                  // 热门商品（游客可浏览）
+                        "/api/sku/spu/**",               // SPU下的SKU列表（游客可浏览）
+                        "/api/search/product",           // 商品搜索（游客可浏览）
                         "/swagger-ui/**",                // Knife4j 文档
                         "/v3/api-docs/**",               // OpenAPI 文档
                         "/swagger-resources/**",

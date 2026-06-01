@@ -1,9 +1,12 @@
 package com.xs.sheepaimall.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.xs.sheepaimall.common.BizException;
 import com.xs.sheepaimall.common.R;
+import com.xs.sheepaimall.common.ResultCode;
 import com.xs.sheepaimall.dto.OrderCreateDTO;
 import com.xs.sheepaimall.entity.OrderInfo;
+import com.xs.sheepaimall.security.UserContext;
 import com.xs.sheepaimall.service.OrderService;
 import com.xs.sheepaimall.vo.OrderInfoVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,6 +16,8 @@ import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * 订单接口 —— 下单事务管控
@@ -39,12 +44,24 @@ public class OrderController {
         return R.ok(orderService.getDetailById(id));
     }
 
-    @Operation(summary = "会员订单分页", description = "按创建时间倒序")
+    @Operation(summary = "会员订单分页",
+            description = "普通用户只能查看自己的订单，拥有 order:list 权限可查看任意用户订单。不传 memberId 默认查当前用户。")
     @GetMapping("/page")
     public R<Page<OrderInfo>> page(
-            @Parameter(description = "会员ID") @RequestParam Long memberId,
+            @Parameter(description = "会员ID（可选，默认当前登录用户；如需查他人需 order:list 权限）")
+            @RequestParam(required = false) Long memberId,
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int pageNum,
             @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int pageSize) {
+        Long currentUserId = UserContext.getUserId();
+        if (memberId == null) {
+            memberId = currentUserId;
+        } else if (!memberId.equals(currentUserId)) {
+            // 查询他人订单需要 order:list 权限
+            List<String> permissions = UserContext.getPermissions();
+            if (permissions == null || !permissions.contains("order:list")) {
+                throw new BizException(ResultCode.FORBIDDEN.getCode(), "无权查看其他用户的订单");
+            }
+        }
         return R.ok(orderService.pageByMemberId(memberId, pageNum, pageSize));
     }
 

@@ -55,12 +55,29 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
 
     @Override
     public List<CategoryVO> listByParentId(Long parentId) {
-        List<Category> list = this.list(
-                new LambdaQueryWrapper<Category>()
-                        .eq(Category::getParentId, parentId)
-                        .eq(Category::getStatus, 1)
-                        .orderByAsc(Category::getSortOrder));
-        return list.stream().map(this::toVO).collect(Collectors.toList());
+        // 从缓存的完整分类树中查找，避免重复查库
+        List<CategoryVO> tree = getTree();
+        if (parentId == 0) {
+            return tree;
+        }
+        // 递归在树中查找匹配的父节点
+        return findChildrenInTree(tree, parentId);
+    }
+
+    /** 在分类树中递归查找指定父节点下的子节点列表 */
+    private List<CategoryVO> findChildrenInTree(List<CategoryVO> nodes, Long targetParentId) {
+        for (CategoryVO node : nodes) {
+            if (node.getId().equals(targetParentId)) {
+                return node.getChildren() != null ? node.getChildren() : List.of();
+            }
+            if (node.getChildren() != null && !node.getChildren().isEmpty()) {
+                List<CategoryVO> found = findChildrenInTree(node.getChildren(), targetParentId);
+                if (!found.isEmpty()) {
+                    return found;
+                }
+            }
+        }
+        return List.of();
     }
 
     @Override

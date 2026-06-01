@@ -208,7 +208,7 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
 
     private SkuVO toSkuVO(Sku sku) {
         SkuVO vo = new SkuVO();
-        BeanUtil.copyProperties(sku, vo);
+        BeanUtil.copyProperties(sku, vo, "specInfo"); // specInfo 类型不同（String→Map），跳过后手动转换
         if (StrUtil.isNotBlank(sku.getSpecInfo())) {
             vo.setSpecInfo(JSONUtil.toBean(sku.getSpecInfo(), java.util.Map.class));
         }

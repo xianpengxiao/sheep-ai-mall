@@ -18,4 +18,6 @@ public interface SkuService extends IService<Sku> {
 
     /** 批量保存或更新SKU */
     boolean batchSaveOrUpdate(Long spuId, List<Sku> skuList);
+
+    boolean removeById(Long id);
 }

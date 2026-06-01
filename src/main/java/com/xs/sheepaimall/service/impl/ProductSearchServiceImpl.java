@@ -101,13 +101,27 @@ public class ProductSearchServiceImpl implements ProductSearchService {
         }
     }
 
-    /** 构建 ES bool 查询 */
+    /** 构建 ES bool 查询 — IK 分词 + wildcard 兜底，支持单字搜索 */
     private Query buildEsQuery(ProductSearchDTO dto) {
         return Query.of(q -> q.bool(b -> {
             if (StrUtil.isNotBlank(dto.getKeyword())) {
-                b.must(m -> m.multiMatch(mm -> mm
-                        .fields("name^3", "subTitle^2", "description", "brand")
-                        .query(dto.getKeyword())));
+                String kw = dto.getKeyword().trim();
+                // bool should: IK 多字段匹配(高权重) + keyword 通配(单字兜底)，满足任一即命中
+                b.must(m -> m.bool(b2 -> {
+                    b2.should(s1 -> s1.multiMatch(mm -> mm
+                            .fields("name^3", "subTitle^2", "description", "brand")
+                            .query(kw)));
+                    b2.should(s2 -> s2.wildcard(w -> w
+                            .field("name.keyword")
+                            .caseInsensitive(true)
+                            .value("*" + kw + "*")));
+                    b2.should(s3 -> s3.wildcard(w -> w
+                            .field("subTitle.keyword")
+                            .caseInsensitive(true)
+                            .value("*" + kw + "*")));
+                    b2.minimumShouldMatch("1");
+                    return b2;
+                }));
             } else {
                 b.must(m -> m.matchAll(ma -> ma));
             }

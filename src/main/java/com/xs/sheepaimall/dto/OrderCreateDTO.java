@@ -14,10 +14,6 @@ import java.util.List;
 @Schema(description = "创建订单请求")
 public class OrderCreateDTO {
 
-    @Schema(description = "会员ID")
-    @NotNull(message = "会员ID不能为空")
-    private Long memberId;
-
     @Schema(description = "收货人姓名")
     @NotBlank(message = "收货人姓名不能为空")
     private String receiverName;

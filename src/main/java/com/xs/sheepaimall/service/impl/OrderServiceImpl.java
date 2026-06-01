@@ -14,6 +14,7 @@ import com.xs.sheepaimall.dto.OrderItemDTO;
 import com.xs.sheepaimall.dto.StockDeductMessage;
 import com.xs.sheepaimall.entity.*;
 import com.xs.sheepaimall.mapper.OrderInfoMapper;
+import com.xs.sheepaimall.security.UserContext;
 import com.xs.sheepaimall.service.*;
 import com.xs.sheepaimall.vo.OrderInfoVO;
 import com.xs.sheepaimall.vo.OrderItemVO;
@@ -75,7 +76,10 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
             throw new BizException("订单明细不能为空");
         }
 
-        Long memberId = dto.getMemberId();
+        Long memberId = UserContext.getUserId();
+        if (memberId == null) {
+            throw new BizException("未获取到登录用户信息");
+        }
 
         // ===== 1. 校验商品有效性（预校验库存，fail-fast） =====
         List<ValidatedItem> validatedItems = new ArrayList<>();
@@ -149,6 +153,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         if (order == null) {
             throw new BizException(ResultCode.NOT_FOUND.getCode(), "订单不存在");
         }
+        checkOrderOwnership(order, "order:list");
         List<OrderItem> items = orderItemService.list(
                 new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, id));
         return buildOrderVO(order, items);
@@ -178,6 +183,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         if (order.getStatus() == null || order.getStatus() != 0) {
             throw new BizException("仅待支付状态的订单可取消，当前状态：" + getStatusText(order.getStatus()));
         }
+
+        // 校验归属：普通用户只能取消自己的订单，有 order:cancel 权限可取消任意订单
+        checkOrderOwnership(order, "order:cancel");
 
         // 2. 获取订单明细
         List<OrderItem> items = orderItemService.list(
@@ -356,6 +364,20 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
                 .collect(Collectors.toList());
         vo.setItems(itemVOs);
         return vo;
+    }
+
+    /** 校验订单归属：有指定权限者可操作任意订单，否则只能操作自己的订单 */
+    private void checkOrderOwnership(OrderInfo order, String requiredPermission) {
+        Long currentUserId = UserContext.getUserId();
+        List<String> permissions = UserContext.getPermissions();
+        // 拥有管理权限 → 可操作任意用户订单
+        if (permissions != null && permissions.contains(requiredPermission)) {
+            return;
+        }
+        // 普通用户 → 只能操作自己的订单
+        if (!order.getMemberId().equals(currentUserId)) {
+            throw new BizException(ResultCode.FORBIDDEN.getCode(), "无权操作此订单");
+        }
     }
 
     private String getStatusText(Integer status) {
