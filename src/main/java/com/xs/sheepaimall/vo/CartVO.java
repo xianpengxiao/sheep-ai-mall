@@ -1,5 +1,7 @@
 package com.xs.sheepaimall.vo;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -12,6 +14,7 @@ import java.util.Map;
 public class CartVO {
 
     @Schema(description = "购物车记录ID")
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
 
     @Schema(description = "会员ID")
@@ -37,6 +40,9 @@ public class CartVO {
 
     @Schema(description = "SKU规格名称")
     private String skuName;
+
+    @Schema(description = "SKU图片")
+    private String skuImage;
 
     @Schema(description = "SKU规格信息")
     private Map<String, String> specInfo;

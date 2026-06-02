@@ -117,19 +117,19 @@ public class CartServiceImpl extends ServiceImpl<CartMapper, Cart> implements Ca
         Cart cart = this.getById(id);
         if (cart == null) return;
 
-        this.removeById(id);
+        // 先删 Redis，再删 MySQL：避免 Redis 删除失败后缓存脏数据
         removeItemFromRedis(cart.getMemberId(), cart.getSkuId());
+        this.removeById(id);
     }
 
     // ==================== 一键清空 ====================
 
     @Override
     public void clear(Long memberId) {
-        // 删除 MySQL 中该会员所有购物车记录
+        // 先删 Redis，再删 MySQL
+        stringRedisTemplate.delete(CART_KEY_PREFIX + memberId);
         this.remove(new LambdaQueryWrapper<Cart>()
                 .eq(Cart::getMemberId, memberId));
-        // 删除 Redis 中整个 Hash key
-        stringRedisTemplate.delete(CART_KEY_PREFIX + memberId);
     }
 
     // ==================== 购物车列表 ====================
@@ -276,6 +276,7 @@ public class CartServiceImpl extends ServiceImpl<CartMapper, Cart> implements Ca
         }
         if (sku != null) {
             vo.setSkuName(sku.getSkuName());
+            vo.setSkuImage(sku.getImage());
             vo.setPrice(sku.getPrice());
             if (sku.getSpecInfo() != null) {
                 vo.setSpecInfo(JSONUtil.toBean(sku.getSpecInfo(), Map.class));
