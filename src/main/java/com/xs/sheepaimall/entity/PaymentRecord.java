@@ -26,7 +26,7 @@ public class PaymentRecord {
     private String orderNo;
 
     @Schema(description = "会员ID")
-    private Long memberId;
+    private Long userId;
 
     @Schema(description = "微信支付交易ID（支付成功后微信返回）")
     private String transactionId;

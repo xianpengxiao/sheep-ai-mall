@@ -35,6 +35,9 @@ public class SysUser {
     @Schema(description = "头像URL")
     private String avatar;
 
+    @Schema(description = "微信openid（用于微信支付）")
+    private String openid;
+
     @Schema(description = "状态：0=禁用 1=正常 2=锁定")
     private Integer status;
 

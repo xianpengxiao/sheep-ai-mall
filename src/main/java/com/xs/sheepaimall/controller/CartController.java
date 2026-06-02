@@ -51,6 +51,13 @@ public class CartController {
         return R.ok();
     }
 
+    @Operation(summary = "批量删除购物车记录")
+    @DeleteMapping("/batch")
+    public R<Object> batchRemove(@RequestBody List<Long> ids) {
+        cartService.batchRemove(ids);
+        return R.ok();
+    }
+
     @Operation(summary = "删除单条购物车记录")
     @DeleteMapping("/{id}")
     public R<Object> removeItem(@Parameter(description = "购物车记录ID") @PathVariable Long id) {
@@ -59,24 +66,24 @@ public class CartController {
     }
 
     @Operation(summary = "一键清空会员购物车")
-    @DeleteMapping("/clear/{memberId}")
-    public R<Object> clear(@Parameter(description = "会员ID") @PathVariable Long memberId) {
-        cartService.clear(memberId);
+    @DeleteMapping("/clear/{userId}")
+    public R<Object> clear(@Parameter(description = "会员ID") @PathVariable Long userId) {
+        cartService.clear(userId);
         return R.ok();
     }
 
     @Operation(summary = "查询购物车列表", description = "含商品名称、图片、规格、单价等冗余信息")
-    @GetMapping("/{memberId}")
-    public R<List<CartVO>> list(@Parameter(description = "会员ID") @PathVariable Long memberId) {
-        return R.ok(cartService.listByMemberId(memberId));
+    @GetMapping("/{userId}")
+    public R<List<CartVO>> list(@Parameter(description = "会员ID") @PathVariable Long userId) {
+        return R.ok(cartService.listByUserId(userId));
     }
 
     @Operation(summary = "全选/取消全选")
-    @PutMapping("/select-all/{memberId}")
+    @PutMapping("/select-all/{userId}")
     public R<Object> selectAll(
-            @Parameter(description = "会员ID") @PathVariable Long memberId,
+            @Parameter(description = "会员ID") @PathVariable Long userId,
             @Parameter(description = "是否选中：1=是 0=否") @RequestParam Integer selected) {
-        cartService.selectAll(memberId, selected);
+        cartService.selectAll(userId, selected);
         return R.ok();
     }
 }

@@ -21,7 +21,7 @@ public interface OrderService extends IService<OrderInfo> {
     OrderInfoVO getDetailById(Long id);
 
     /** 分页查询会员订单 */
-    Page<OrderInfo> pageByMemberId(Long memberId, int pageNum, int pageSize);
+    Page<OrderInfo> pageByUserId(Long userId, int pageNum, int pageSize);
 
     /** 更新支付状态（支付回调专用） */
     void updatePayStatus(Long orderId, BigDecimal payAmount, Integer status, LocalDateTime payTime);

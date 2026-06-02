@@ -19,7 +19,7 @@ public class OrderInfoVO {
     private String orderNo;
 
     @Schema(description = "会员ID")
-    private Long memberId;
+    private Long userId;
 
     @Schema(description = "商品总金额")
     private BigDecimal totalAmount;

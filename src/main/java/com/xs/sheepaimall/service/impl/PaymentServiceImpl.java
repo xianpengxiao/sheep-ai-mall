@@ -14,14 +14,17 @@ import com.xs.sheepaimall.common.ResultCode;
 import com.xs.sheepaimall.config.WechatPayProperties;
 import com.xs.sheepaimall.entity.OrderInfo;
 import com.xs.sheepaimall.entity.PaymentRecord;
+import com.xs.sheepaimall.entity.SysUser;
 import com.xs.sheepaimall.mapper.PaymentRecordMapper;
 import com.xs.sheepaimall.service.OrderService;
 import com.xs.sheepaimall.service.PaymentService;
+import com.xs.sheepaimall.service.SysUserService;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -59,6 +62,9 @@ public class PaymentServiceImpl extends ServiceImpl<PaymentRecordMapper, Payment
     @Resource
     private OrderService orderService;
 
+    @Resource
+    private SysUserService sysUserService;
+
     // ==================== 创建 JSAPI 支付 ====================
 
     @Override
@@ -88,7 +94,7 @@ public class PaymentServiceImpl extends ServiceImpl<PaymentRecordMapper, Payment
         request.setAmount(amount);
 
         Payer payer = new Payer();
-        payer.setOpenid(getMemberOpenid(order.getMemberId())); // 从会员表获取
+        payer.setOpenid(getUserOpenid(order.getUserId()));
         request.setPayer(payer);
 
         // 3. 调用微信 JSAPI 下单
@@ -99,7 +105,7 @@ public class PaymentServiceImpl extends ServiceImpl<PaymentRecordMapper, Payment
         PaymentRecord record = new PaymentRecord();
         record.setOrderId(orderId);
         record.setOrderNo(order.getOrderNo());
-        record.setMemberId(order.getMemberId());
+        record.setUserId(order.getUserId());
         record.setPrepayId(prepayId);
         record.setPayAmount(order.getTotalAmount());
         record.setPayMethod("WECHAT_JSAPI");
@@ -228,7 +234,7 @@ public class PaymentServiceImpl extends ServiceImpl<PaymentRecordMapper, Payment
             record = new PaymentRecord();
             record.setOrderId(orderId);
             record.setOrderNo(order.getOrderNo());
-            record.setMemberId(order.getMemberId());
+            record.setUserId(order.getUserId());
             record.setPrepayId("MOCK_PREPAY_" + System.currentTimeMillis());
             record.setPayMethod("MOCK");
         }
@@ -245,12 +251,14 @@ public class PaymentServiceImpl extends ServiceImpl<PaymentRecordMapper, Payment
 
     // ==================== 内部方法 ====================
 
-    /** 从会员表获取 openid（TODO: 对接 MemberService） */
-    private String getMemberOpenid(Long memberId) {
-        // 预留：调用 MemberService 获取 openid
-        // Member member = memberService.getById(memberId);
-        // return member.getOpenid();
-        return "";
+    /** 从 sys_user 表获取用户 openid，用于微信 JSAPI 支付 */
+    private String getUserOpenid(Long userId) {
+        SysUser user = sysUserService.getById(userId);
+        if (user == null || StringUtils.isEmpty(user.getOpenid())) {
+            log.warn("用户 openid 为空 userId={}", userId);
+            return "";
+        }
+        return user.getOpenid();
     }
 
     /** 微信支付时间格式 → LocalDateTime */

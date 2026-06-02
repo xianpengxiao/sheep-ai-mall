@@ -24,12 +24,15 @@ public interface CartService extends IService<Cart> {
     /** 删除单条购物车记录 */
     void removeItem(Long id);
 
+    /** 批量删除购物车记录 */
+    void batchRemove(List<Long> ids);
+
     /** 一键清空会员购物车 */
-    void clear(Long memberId);
+    void clear(Long userId);
 
     /** 查询会员购物车列表（含商品冗余信息，Redis优先） */
-    List<CartVO> listByMemberId(Long memberId);
+    List<CartVO> listByUserId(Long userId);
 
     /** 全选 / 取消全选 */
-    void selectAll(Long memberId, Integer selected);
+    void selectAll(Long userId, Integer selected);
 }

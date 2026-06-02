@@ -76,8 +76,8 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
             throw new BizException("订单明细不能为空");
         }
 
-        Long memberId = UserContext.getUserId();
-        if (memberId == null) {
+        Long userId = UserContext.getUserId();
+        if (userId == null) {
             throw new BizException("未获取到登录用户信息");
         }
 
@@ -94,7 +94,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
 
         OrderInfo order = new OrderInfo();
         order.setOrderNo(generateOrderNo());
-        order.setMemberId(memberId);
+        order.setUserId(userId);
         order.setTotalAmount(totalAmount);
         order.setPayAmount(BigDecimal.ZERO);
         order.setStatus(0); // 待支付
@@ -128,12 +128,12 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
                 .map(OrderItemDTO::getSkuId)
                 .collect(Collectors.toList());
         List<Cart> cartItems = cartService.list(new LambdaQueryWrapper<Cart>()
-                .eq(Cart::getMemberId, memberId)
+                .eq(Cart::getUserId, userId)
                 .in(Cart::getSkuId, orderedSkuIds));
         if (!cartItems.isEmpty()) {
             cartService.removeByIds(cartItems.stream().map(Cart::getId).collect(Collectors.toList()));
             try {
-                stringRedisTemplate.delete("cart::" + memberId);
+                stringRedisTemplate.delete("cart::" + userId);
             } catch (DataAccessException ignored) {
             }
         }
@@ -162,11 +162,11 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     // ==================== 会员订单分页 ====================
 
     @Override
-    public Page<OrderInfo> pageByMemberId(Long memberId, int pageNum, int pageSize) {
+    public Page<OrderInfo> pageByUserId(Long userId, int pageNum, int pageSize) {
         return this.page(
                 new Page<>(pageNum, pageSize),
                 new LambdaQueryWrapper<OrderInfo>()
-                        .eq(OrderInfo::getMemberId, memberId)
+                        .eq(OrderInfo::getUserId, userId)
                         .orderByDesc(OrderInfo::getCreateTime));
     }
 
@@ -375,7 +375,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
             return;
         }
         // 普通用户 → 只能操作自己的订单
-        if (!order.getMemberId().equals(currentUserId)) {
+        if (!order.getUserId().equals(currentUserId)) {
             throw new BizException(ResultCode.FORBIDDEN.getCode(), "无权操作此订单");
         }
     }

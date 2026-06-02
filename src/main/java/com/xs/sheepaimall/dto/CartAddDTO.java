@@ -9,7 +9,7 @@ import lombok.Data;
 public class CartAddDTO {
 
     @Schema(description = "会员ID")
-    private Long memberId;
+    private Long userId;
 
     @Schema(description = "SPU ID")
     private Long spuId;
