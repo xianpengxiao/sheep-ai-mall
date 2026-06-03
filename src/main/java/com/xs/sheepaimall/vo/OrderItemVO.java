@@ -19,6 +19,9 @@ public class OrderItemVO {
     @Schema(description = "SPU ID")
     private Long spuId;
 
+    @Schema(description = "SPU名称")
+    private String spuName;
+
     @Schema(description = "SKU ID")
     private Long skuId;
 

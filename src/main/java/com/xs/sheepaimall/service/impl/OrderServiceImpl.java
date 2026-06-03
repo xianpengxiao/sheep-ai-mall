@@ -349,16 +349,22 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         return timestamp + random;
     }
 
-    /** 组装 OrderInfoVO */
+    /** 组装 OrderInfoVO（含 SPU 名称批量查询） */
     private OrderInfoVO buildOrderVO(OrderInfo order, List<OrderItem> items) {
         OrderInfoVO vo = new OrderInfoVO();
         BeanUtil.copyProperties(order, vo);
         vo.setStatusText(getStatusText(order.getStatus()));
 
+        // 批量查询 SPU 名称
+        Set<Long> spuIds = items.stream().map(OrderItem::getSpuId).collect(Collectors.toSet());
+        Map<Long, String> spuNameMap = spuService.listByIds(spuIds).stream()
+                .collect(Collectors.toMap(Spu::getId, Spu::getName, (a, b) -> a));
+
         List<OrderItemVO> itemVOs = items.stream()
                 .map(item -> {
                     OrderItemVO iv = new OrderItemVO();
                     BeanUtil.copyProperties(item, iv);
+                    iv.setSpuName(spuNameMap.get(item.getSpuId()));
                     return iv;
                 })
                 .collect(Collectors.toList());
