@@ -159,15 +159,48 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         return buildOrderVO(order, items);
     }
 
-    // ==================== 会员订单分页 ====================
+    // ==================== 会员订单查询 ====================
 
     @Override
-    public Page<OrderInfo> pageByUserId(Long userId, int pageNum, int pageSize) {
-        return this.page(
+    public Page<OrderInfoVO> pageByUserId(Long userId, int pageNum, int pageSize) {
+        Page<OrderInfo> page = this.page(
                 new Page<>(pageNum, pageSize),
                 new LambdaQueryWrapper<OrderInfo>()
                         .eq(OrderInfo::getUserId, userId)
                         .orderByDesc(OrderInfo::getCreateTime));
+
+        List<OrderInfo> orders = page.getRecords();
+        if (orders.isEmpty()) {
+            return new Page<OrderInfoVO>(pageNum, pageSize).setTotal(page.getTotal());
+        }
+
+        // 批量查询订单明细
+        List<Long> orderIds = orders.stream().map(OrderInfo::getId).collect(Collectors.toList());
+        List<OrderItem> allItems = orderItemService.list(
+                new LambdaQueryWrapper<OrderItem>().in(OrderItem::getOrderId, orderIds));
+        Map<Long, List<OrderItem>> itemMap = allItems.stream()
+                .collect(Collectors.groupingBy(OrderItem::getOrderId));
+
+        // 批量查询 SPU 名称
+        Set<Long> spuIds = allItems.stream().map(OrderItem::getSpuId).collect(Collectors.toSet());
+        Map<Long, String> spuNameMap = spuService.listByIds(spuIds).stream()
+                .collect(Collectors.toMap(Spu::getId, Spu::getName, (a, b) -> a));
+
+        List<OrderInfoVO> voList = orders.stream()
+                .map(order -> toOrderVO(order, itemMap.getOrDefault(order.getId(), List.of()), spuNameMap))
+                .collect(Collectors.toList());
+
+        Page<OrderInfoVO> result = new Page<>(pageNum, pageSize);
+        result.setTotal(page.getTotal());
+        result.setRecords(voList);
+        return result;
+    }
+
+    @Override
+    public List<OrderInfo> listByUserId(Long userId) {
+        return this.list(new LambdaQueryWrapper<OrderInfo>()
+                .eq(OrderInfo::getUserId, userId)
+                .orderByDesc(OrderInfo::getCreateTime));
     }
 
     // ==================== 取消订单 ====================
@@ -359,6 +392,24 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         Set<Long> spuIds = items.stream().map(OrderItem::getSpuId).collect(Collectors.toSet());
         Map<Long, String> spuNameMap = spuService.listByIds(spuIds).stream()
                 .collect(Collectors.toMap(Spu::getId, Spu::getName, (a, b) -> a));
+
+        List<OrderItemVO> itemVOs = items.stream()
+                .map(item -> {
+                    OrderItemVO iv = new OrderItemVO();
+                    BeanUtil.copyProperties(item, iv);
+                    iv.setSpuName(spuNameMap.get(item.getSpuId()));
+                    return iv;
+                })
+                .collect(Collectors.toList());
+        vo.setItems(itemVOs);
+        return vo;
+    }
+
+    /** 组装 OrderInfoVO（复用已有 SPU 名称映射，避免重复查库） */
+    private OrderInfoVO toOrderVO(OrderInfo order, List<OrderItem> items, Map<Long, String> spuNameMap) {
+        OrderInfoVO vo = new OrderInfoVO();
+        BeanUtil.copyProperties(order, vo);
+        vo.setStatusText(getStatusText(order.getStatus()));
 
         List<OrderItemVO> itemVOs = items.stream()
                 .map(item -> {

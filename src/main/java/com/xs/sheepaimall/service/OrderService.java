@@ -8,6 +8,7 @@ import com.xs.sheepaimall.vo.OrderInfoVO;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 订单 Service —— 下单事务管控
@@ -20,8 +21,11 @@ public interface OrderService extends IService<OrderInfo> {
     /** 查询订单详情（含明细） */
     OrderInfoVO getDetailById(Long id);
 
-    /** 分页查询会员订单 */
-    Page<OrderInfo> pageByUserId(Long userId, int pageNum, int pageSize);
+    /** 分页查询会员订单（含订单明细） */
+    Page<OrderInfoVO> pageByUserId(Long userId, int pageNum, int pageSize);
+
+    /** 查询用户全部订单（按创建时间倒序） */
+    List<OrderInfo> listByUserId(Long userId);
 
     /** 更新支付状态（支付回调专用） */
     void updatePayStatus(Long orderId, BigDecimal payAmount, Integer status, LocalDateTime payTime);

@@ -47,7 +47,7 @@ public class OrderController {
     @Operation(summary = "会员订单分页",
             description = "普通用户只能查看自己的订单，拥有 order:list 权限可查看任意用户订单。不传 userId 默认查当前用户。")
     @GetMapping("/page")
-    public R<Page<OrderInfo>> page(
+    public R<Page<OrderInfoVO>> page(
             @Parameter(description = "会员ID（可选，默认当前登录用户；如需查他人需 order:list 权限）")
             @RequestParam(required = false) Long userId,
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int pageNum,
@@ -63,6 +63,24 @@ public class OrderController {
             }
         }
         return R.ok(orderService.pageByUserId(userId, pageNum, pageSize));
+    }
+
+    @Operation(summary = "查询订单列表",
+            description = "普通用户只能查看自己的订单，拥有 order:list 权限可查看任意用户订单。不传 userId 默认查当前用户。不分页，如需分页请使用 /page 接口。")
+    @GetMapping("/list")
+    public R<List<OrderInfo>> list(
+            @Parameter(description = "用户ID（可选，默认当前登录用户；查他人需 order:list 权限）")
+            @RequestParam(required = false) Long userId) {
+        Long currentUserId = UserContext.getUserId();
+        if (userId == null) {
+            userId = currentUserId;
+        } else if (!userId.equals(currentUserId)) {
+            List<String> permissions = UserContext.getPermissions();
+            if (permissions == null || !permissions.contains("order:list")) {
+                throw new BizException(ResultCode.FORBIDDEN.getCode(), "无权查看其他用户的订单");
+            }
+        }
+        return R.ok(orderService.listByUserId(userId));
     }
 
     @Operation(summary = "取消订单",
