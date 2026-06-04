@@ -162,12 +162,15 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     // ==================== 会员订单查询 ====================
 
     @Override
-    public Page<OrderInfoVO> pageByUserId(Long userId, int pageNum, int pageSize) {
-        Page<OrderInfo> page = this.page(
-                new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<OrderInfo>()
-                        .eq(OrderInfo::getUserId, userId)
-                        .orderByDesc(OrderInfo::getCreateTime));
+    public Page<OrderInfoVO> pageByUserId(Long userId, Integer status, int pageNum, int pageSize) {
+        LambdaQueryWrapper<OrderInfo> wrapper = new LambdaQueryWrapper<OrderInfo>()
+                .eq(OrderInfo::getUserId, userId)
+                .orderByDesc(OrderInfo::getCreateTime);
+        if (status != null) {
+            wrapper.eq(OrderInfo::getStatus, status);
+        }
+
+        Page<OrderInfo> page = this.page(new Page<>(pageNum, pageSize), wrapper);
 
         List<OrderInfo> orders = page.getRecords();
         if (orders.isEmpty()) {

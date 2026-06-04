@@ -21,8 +21,8 @@ public interface OrderService extends IService<OrderInfo> {
     /** 查询订单详情（含明细） */
     OrderInfoVO getDetailById(Long id);
 
-    /** 分页查询会员订单（含订单明细） */
-    Page<OrderInfoVO> pageByUserId(Long userId, int pageNum, int pageSize);
+    /** 分页查询会员订单（含订单明细），status 为 null 时不筛选状态 */
+    Page<OrderInfoVO> pageByUserId(Long userId, Integer status, int pageNum, int pageSize);
 
     /** 查询用户全部订单（按创建时间倒序） */
     List<OrderInfo> listByUserId(Long userId);

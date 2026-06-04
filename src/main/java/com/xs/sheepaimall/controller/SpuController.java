@@ -5,6 +5,7 @@ import com.xs.sheepaimall.common.R;
 import com.xs.sheepaimall.dto.SpuQueryDTO;
 import com.xs.sheepaimall.dto.SpuSaveDTO;
 import com.xs.sheepaimall.entity.Spu;
+import com.xs.sheepaimall.security.RequirePermission;
 import com.xs.sheepaimall.service.SpuService;
 import com.xs.sheepaimall.vo.SpuVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -38,12 +39,14 @@ public class SpuController {
 
     @Operation(summary = "新增SPU", description = "含SKU列表")
     @PostMapping
+    @RequirePermission("spu:create")
     public R<SpuVO> save(@Valid @RequestBody SpuSaveDTO dto) {
         return R.ok(spuService.saveWithSku(dto));
     }
 
     @Operation(summary = "编辑SPU", description = "含SKU列表")
     @PutMapping("/{id}")
+    @RequirePermission("spu:update")
     public R<SpuVO> update(@Parameter(description = "SPU ID") @PathVariable Long id, @Valid @RequestBody SpuSaveDTO dto) {
         dto.setId(id);
         return R.ok(spuService.updateWithSku(dto));
@@ -51,6 +54,7 @@ public class SpuController {
 
     @Operation(summary = "上架/下架SPU")
     @PutMapping("/{id}/status/{status}")
+    @RequirePermission("spu:update")
     public R<Object> updateStatus(
             @Parameter(description = "SPU ID") @PathVariable Long id,
             @Parameter(description = "状态: 1=上架 0=下架") @PathVariable Integer status) {
@@ -68,6 +72,7 @@ public class SpuController {
 
     @Operation(summary = "删除SPU", description = "逻辑删除")
     @DeleteMapping("/{id}")
+    @RequirePermission("spu:delete")
     public R<Object> delete(@Parameter(description = "SPU ID") @PathVariable Long id) {
         spuService.removeById(id);
         return R.ok();

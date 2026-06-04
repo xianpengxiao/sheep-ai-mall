@@ -18,6 +18,9 @@ public class Spu {
     @Schema(description = "所属分类ID")
     private Long categoryId;
 
+    @Schema(description = "商家ID")
+    private Long merchantId;
+
     @Schema(description = "商品名称")
     private String name;
 

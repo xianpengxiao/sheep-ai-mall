@@ -129,7 +129,7 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
             skuService.batchSaveOrUpdate(spu.getId(), skuList);
         }
 
-        // 新增商品后清除热门分页缓存
+        // 新增商品后清除缓存
         cacheHelper.evictSpuHotPage();
         return getDetailById(spu.getId());
     }
