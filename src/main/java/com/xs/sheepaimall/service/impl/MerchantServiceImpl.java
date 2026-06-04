@@ -20,6 +20,7 @@ import com.xs.sheepaimall.service.MerchantService;
 import com.xs.sheepaimall.service.OrderItemService;
 import com.xs.sheepaimall.service.SkuService;
 import com.xs.sheepaimall.service.SpuService;
+import com.xs.sheepaimall.util.OssUtil;
 import com.xs.sheepaimall.vo.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -48,6 +49,9 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
     @Resource
     private SpuService spuService;
+
+    @Resource
+    private OssUtil ossUtil;
 
     @Resource
     private SkuService skuService;
@@ -160,9 +164,19 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     @Transactional(rollbackFor = Exception.class)
     public MerchantVO updateMyShop(MerchantUpdateDTO dto) {
         Merchant merchant = getCurrentMerchant();
+        // 记录旧值，用于后续删除 OSS 文件
+        String oldLogo = merchant.getShopLogo();
+        String oldLicense = merchant.getBusinessLicense();
         BeanUtil.copyProperties(dto, merchant, "id", "userId", "status");
         this.updateById(merchant);
         log.info("商家信息已更新 merchantId={}", merchant.getId());
+        // 删除旧 OSS 文件
+        if (oldLogo != null && dto.getShopLogo() != null && !oldLogo.equals(dto.getShopLogo())) {
+            ossUtil.deleteByUrl(oldLogo);
+        }
+        if (oldLicense != null && dto.getBusinessLicense() != null && !oldLicense.equals(dto.getBusinessLicense())) {
+            ossUtil.deleteByUrl(oldLicense);
+        }
         return toSimpleVO(merchant);
     }
 

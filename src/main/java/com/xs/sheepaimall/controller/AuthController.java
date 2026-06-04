@@ -8,6 +8,7 @@ import com.xs.sheepaimall.entity.SysUser;
 import com.xs.sheepaimall.security.RequirePermission;
 import com.xs.sheepaimall.security.UserContext;
 import com.xs.sheepaimall.service.SysUserService;
+import com.xs.sheepaimall.util.OssUtil;
 import com.xs.sheepaimall.vo.LoginVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -28,6 +29,9 @@ public class AuthController {
 
     @Resource
     private SysUserService sysUserService;
+
+    @Resource
+    private OssUtil ossUtil;
 
     @Operation(summary = "账号密码登录")
     @PostMapping("/login")
@@ -58,11 +62,25 @@ public class AuthController {
         return R.ok();
     }
 
-    @Operation(summary = "修改头像")
+    @Operation(summary = "修改头像", description = "接收 Base64 图片，上传后自动更新用户头像字段，并删除旧头像")
     @PutMapping("/avatar")
     public R<Void> updateAvatar(
-            @Parameter(description = "头像URL") @RequestParam String avatarUrl) {
-        sysUserService.updateAvatar(UserContext.getUserId(), avatarUrl);
+            @Parameter(description = "Base64 图片数据（支持 data:image/xxx;base64, 前缀格式）") @RequestParam String avatarUrl) {
+        Long userId = UserContext.getUserId();
+        // 1. 查询旧头像 URL
+        SysUser user = sysUserService.getById(userId);
+        if (user == null) {
+            return R.fail("用户不存在");
+        }
+        String oldAvatar = user.getAvatar();
+        // 2. 上传新头像
+        String newUrl = ossUtil.uploadBase64(avatarUrl, "avatar");
+        // 3. 更新数据库
+        sysUserService.updateAvatar(userId, newUrl);
+        // 4. 删除旧头像（OSS 文件）
+        if (oldAvatar != null && !oldAvatar.isBlank()) {
+            ossUtil.deleteByUrl(oldAvatar);
+        }
         return R.ok();
     }
 

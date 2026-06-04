@@ -66,6 +66,7 @@ public class DataInitRunner implements ApplicationRunner {
             admin.setUsername(ADMIN_USERNAME);
             admin.setPassword(ENCODER.encode(RAW_PASSWORD));
             admin.setRealName("超级管理员");
+            admin.setAvatar("https://xxp-itcast.oss-cn-beijing.aliyuncs.com/sheepaimallicon.png");
             admin.setStatus(1);
             admin.setRemark("系统初始化创建");
             sysUserMapper.insert(admin);
@@ -89,6 +90,7 @@ public class DataInitRunner implements ApplicationRunner {
             user.setPassword(ENCODER.encode(RAW_PASSWORD));
             user.setRealName(realName);
             user.setPhone(phone);
+            user.setAvatar("https://xxp-itcast.oss-cn-beijing.aliyuncs.com/sheepaimallicon.png");
             user.setStatus(1);
             sysUserMapper.insert(user);
             log.info("商家账号已创建: {} / {}", username, RAW_PASSWORD);

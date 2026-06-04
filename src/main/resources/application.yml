@@ -66,10 +66,23 @@ spring:
       chat:
         options:
           model: deepseek-chat
+  # 文件上传
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
+
   # JSON 日期格式
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: GMT+8
+
+  # 阿里云 OSS
+  alioss:
+    endpoint: ${sheep.alioss.endpoint}
+    access-key-id: ${sheep.alioss.access-key-id}
+    access-key-secret: ${sheep.alioss.access-key-secret}
+    bucket-name: ${sheep.alioss.bucket-name}
 
 # MyBatis-Plus 配置
 mybatis-plus:

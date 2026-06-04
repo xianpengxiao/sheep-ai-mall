@@ -142,6 +142,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         user.setRealName(dto.getRealName() != null ? dto.getRealName() : "");
         user.setPhone(dto.getPhone() != null ? dto.getPhone() : "");
         user.setEmail(dto.getEmail() != null ? dto.getEmail() : "");
+        user.setAvatar("https://xxp-itcast.oss-cn-beijing.aliyuncs.com/sheepaimallicon.png");
         user.setStatus(1);
         this.save(user);
 
