@@ -121,12 +121,24 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public void apply(MerchantApplyDTO dto) {
         Long userId = UserContext.getUserId();
 
-        Long existingCount = this.lambdaQuery()
+        // 已开通或待审核商家不能重复申请
+        Long existingMerchant = this.lambdaQuery()
                 .eq(Merchant::getUserId, userId)
                 .in(Merchant::getStatus, 0, 1)
                 .count();
-        if (existingCount > 0) {
+        if (existingMerchant > 0) {
             throw new BizException("您已有待审核或已开通的店铺，请勿重复申请");
+        }
+
+        // 查找历史驳回的申请，删除旧资质图片
+        MerchantApply oldApply = merchantApplyMapper.selectOne(
+                new LambdaQueryWrapper<MerchantApply>()
+                        .eq(MerchantApply::getUserId, userId)
+                        .orderByDesc(MerchantApply::getCreateTime)
+                        .last("LIMIT 1"));
+        if (oldApply != null && oldApply.getBusinessLicense() != null
+                && !oldApply.getBusinessLicense().equals(dto.getBusinessLicense())) {
+            ossUtil.deleteByUrl(oldApply.getBusinessLicense());
         }
 
         MerchantApply apply = new MerchantApply();
@@ -137,6 +149,8 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
         log.info("商家入驻申请已提交 userId={}, applyId={}", userId, apply.getId());
     }
+
+
 
     // ==================== 商家后台 ====================
 
