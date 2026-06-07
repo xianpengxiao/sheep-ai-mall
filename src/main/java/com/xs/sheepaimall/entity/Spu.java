@@ -45,6 +45,10 @@ public class Spu {
     @Schema(description = "销量")
     private Integer salesCount;
 
+    @Schema(description = "营业状态 0已打烊 1营业中")
+    @TableField(exist = false)
+    private Integer shopStatus;
+
     @Schema(description = "创建时间")
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;

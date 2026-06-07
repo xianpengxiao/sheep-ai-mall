@@ -27,10 +27,23 @@ public class ReviewDTO {
     @Schema(description = "商品SKU ID（可选，接口自动填充）")
     private Long skuId;
 
-    @Min(value = 1, message = "评分最低1分")
-    @Max(value = 5, message = "评分最高5分")
-    @Schema(description = "评分 1-5")
-    private Integer rating = 5;
+    @NotNull(message = "描述相符评分不能为空")
+    @Min(value = 1, message = "描述相符评分最低1分")
+    @Max(value = 5, message = "描述相符评分最高5分")
+    @Schema(description = "描述相符评分 1-5")
+    private Integer describeScore;
+
+    @NotNull(message = "服务态度评分不能为空")
+    @Min(value = 1, message = "服务态度评分最低1分")
+    @Max(value = 5, message = "服务态度评分最高5分")
+    @Schema(description = "服务态度评分 1-5")
+    private Integer serviceScore;
+
+    @NotNull(message = "物流服务评分不能为空")
+    @Min(value = 1, message = "物流服务评分最低1分")
+    @Max(value = 5, message = "物流服务评分最高5分")
+    @Schema(description = "物流服务评分 1-5")
+    private Integer logisticsScore;
 
     @Schema(description = "评价内容")
     private String content;

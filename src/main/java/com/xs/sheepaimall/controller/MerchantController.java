@@ -7,9 +7,11 @@ import com.xs.sheepaimall.dto.MerchantUpdateDTO;
 import com.xs.sheepaimall.dto.SpuSaveDTO;
 import com.xs.sheepaimall.entity.Spu;
 import com.xs.sheepaimall.security.RequirePermission;
+import com.xs.sheepaimall.service.MerchantDsrService;
 import com.xs.sheepaimall.service.MerchantService;
 import com.xs.sheepaimall.service.ReviewService;
 import com.xs.sheepaimall.vo.IncomeStatVO;
+import com.xs.sheepaimall.vo.MerchantDsrVO;
 import com.xs.sheepaimall.vo.MerchantOrderVO;
 import com.xs.sheepaimall.vo.MerchantVO;
 import com.xs.sheepaimall.vo.ReviewVO;
@@ -33,6 +35,9 @@ public class MerchantController {
 
     @Resource
     private ReviewService reviewService;
+
+    @Resource
+    private MerchantDsrService merchantDsrService;
 
     // ==================== 买家端 ====================
 
@@ -116,8 +121,9 @@ public class MerchantController {
     public R<Page<Spu>> goodsPage(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int pageNum,
             @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int pageSize,
-            @Parameter(description = "关键词") @RequestParam(required = false) String keyword) {
-        return R.ok(merchantService.pageMyGoods(pageNum, pageSize, keyword));
+            @Parameter(description = "关键词") @RequestParam(required = false) String keyword,
+            @Parameter(description = "分类ID") @RequestParam(required = false) Long categoryId) {
+        return R.ok(merchantService.pageMyGoods(pageNum, pageSize, keyword, categoryId));
     }
 
     @Operation(summary = "店铺订单分页")
@@ -156,12 +162,46 @@ public class MerchantController {
         return R.ok(merchantService.getIncomeStat());
     }
 
-    @Operation(summary = "店铺评价列表", description = "分页查询本店铺商品的评价")
+    @Operation(summary = "店铺评价列表", description = "分页查询本店铺商品的评价，支持按状态筛选和内容搜索")
     @GetMapping("/review/page")
     @RequirePermission("merchant:review:view")
     public R<Page<ReviewVO>> reviewPage(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int pageNum,
-            @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int pageSize) {
-        return R.ok(reviewService.pageByMerchant(pageNum, pageSize));
+            @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int pageSize,
+            @Parameter(description = "显示状态 0隐藏 1显示（不传查全部）") @RequestParam(required = false) Integer status,
+            @Parameter(description = "评价状态 0待评 1已评 2已过期（不传查全部）") @RequestParam(required = false) Integer reviewStatus,
+            @Parameter(description = "评价内容关键词") @RequestParam(required = false) String keyword) {
+        return R.ok(reviewService.pageByMerchant(pageNum, pageSize, status, reviewStatus, keyword));
+    }
+    // ==================== 营业状态 ====================
+
+    @Operation(summary = "查询营业状态", description = "查询当前店铺的营业状态（商家后台）")
+    @GetMapping("/shop/status")
+    @RequirePermission("merchant:info:update")
+    public R<Integer> shopStatus() {
+        return R.ok(merchantService.getMyShopStatus());
+    }
+
+    @Operation(summary = "切换营业状态", description = "打烊/开店切换（商家后台）")
+    @PutMapping("/shop/status")
+    @RequirePermission("merchant:info:update")
+    public R<Integer> toggleShopStatus() {
+        return R.ok(merchantService.toggleShopStatus());
+    }
+
+    // ==================== DSR 评分 ====================
+
+    @Operation(summary = "店铺DSR评分", description = "查询指定店铺的最新DSR三维评分（公开接口）")
+    @GetMapping("/{id}/dsr")
+    public R<MerchantDsrVO> dsr(@Parameter(description = "商家ID") @PathVariable Long id) {
+        return R.ok(merchantDsrService.getLatestDsr(id));
+    }
+
+    @Operation(summary = "DSR评分趋势", description = "查询本店铺近30天DSR趋势（商家后台）")
+    @GetMapping("/stat/dsr")
+    @RequirePermission("merchant:stat:view")
+    public R<MerchantDsrVO> dsrTrend() {
+        Long merchantId = merchantService.getCurrentMerchantId();
+        return R.ok(merchantDsrService.getTrendDsr(merchantId));
     }
 }

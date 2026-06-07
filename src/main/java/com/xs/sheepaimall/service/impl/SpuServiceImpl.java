@@ -14,8 +14,14 @@ import com.xs.sheepaimall.dto.SkuSaveDTO;
 import com.xs.sheepaimall.dto.SpuQueryDTO;
 import com.xs.sheepaimall.dto.SpuSaveDTO;
 import com.xs.sheepaimall.entity.Category;
+import com.xs.sheepaimall.entity.Merchant;
+import com.xs.sheepaimall.entity.MerchantDsr;
+import com.xs.sheepaimall.entity.ProductReview;
 import com.xs.sheepaimall.entity.Sku;
 import com.xs.sheepaimall.entity.Spu;
+import com.xs.sheepaimall.mapper.MerchantDsrMapper;
+import com.xs.sheepaimall.mapper.MerchantMapper;
+import com.xs.sheepaimall.mapper.ProductReviewMapper;
 import com.xs.sheepaimall.mapper.SpuMapper;
 import com.xs.sheepaimall.service.CategoryService;
 import com.xs.sheepaimall.service.SkuService;
@@ -27,10 +33,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
 public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuService {
+
+    /** SPU 详情缓存版本号，VO 结构变化时递增以强制刷新旧缓存 */
+    private static final String SPU_CACHE_VERSION = "v2";
 
     @Resource
     private SkuService skuService;
@@ -40,6 +51,15 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
 
     @Resource
     private CacheHelper cacheHelper;
+
+    @Resource
+    private ProductReviewMapper productReviewMapper;
+
+    @Resource
+    private MerchantMapper merchantMapper;
+
+    @Resource
+    private MerchantDsrMapper merchantDsrMapper;
 
     @Override
     public Page<Spu> pageQuery(SpuQueryDTO dto) {
@@ -54,12 +74,33 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
             wrapper.orderByDesc(Spu::getCreateTime);
         }
 
-        return this.page(new Page<>(dto.getPageNum(), dto.getPageSize()), wrapper);
+        Page<Spu> page = this.page(new Page<>(dto.getPageNum(), dto.getPageSize()), wrapper);
+
+        // 批量填充商家营业状态
+        if (!page.getRecords().isEmpty()) {
+            List<Long> merchantIds = page.getRecords().stream()
+                    .map(Spu::getMerchantId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (!merchantIds.isEmpty()) {
+                Map<Long, Integer> shopStatusMap = merchantMapper.selectList(
+                                new LambdaQueryWrapper<Merchant>()
+                                        .in(Merchant::getId, merchantIds)
+                                        .select(Merchant::getId, Merchant::getShopStatus))
+                        .stream()
+                        .collect(Collectors.toMap(Merchant::getId, Merchant::getShopStatus, (a, b) -> a));
+                page.getRecords().forEach(spu ->
+                        spu.setShopStatus(shopStatusMap.get(spu.getMerchantId())));
+            }
+        }
+
+        return page;
     }
 
     @Override
     public SpuVO getDetailById(Long id) {
-        String cacheKey = CacheConstants.SPU_DETAIL + "::" + id;
+        String cacheKey = CacheConstants.SPU_DETAIL + "::" + id + "::" + SPU_CACHE_VERSION;
 
         String cachedJson = cacheHelper.getOrFetch(cacheKey,
                 () -> {
@@ -88,6 +129,44 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
 
         List<Sku> skuList = skuService.listBySpuId(spu.getId());
         vo.setSkuList(skuList.stream().map(this::toSkuVO).collect(Collectors.toList()));
+
+        // 查询商铺信息
+        if (spu.getMerchantId() != null) {
+            Merchant merchant = merchantMapper.selectById(spu.getMerchantId());
+            if (merchant != null) {
+                vo.setShopName(merchant.getShopName());
+                vo.setShopLogo(merchant.getShopLogo());
+                // 店铺DSR评分
+                MerchantDsr dsr = merchantDsrMapper.selectOne(
+                        new LambdaQueryWrapper<MerchantDsr>()
+                                .eq(MerchantDsr::getMerchantId, spu.getMerchantId())
+                                .orderByDesc(MerchantDsr::getStatDate)
+                                .last("LIMIT 1"));
+                if (dsr != null) {
+                    vo.setShopDescribeScore(dsr.getDescribeScore() != null ? dsr.getDescribeScore().doubleValue() : null);
+                    vo.setShopServiceScore(dsr.getServiceScore() != null ? dsr.getServiceScore().doubleValue() : null);
+                    vo.setShopLogisticsScore(dsr.getLogisticsScore() != null ? dsr.getLogisticsScore().doubleValue() : null);
+                }
+            }
+        }
+
+        // 查询平均评分和评价数
+        List<ProductReview> reviews = productReviewMapper.selectList(
+                new LambdaQueryWrapper<ProductReview>()
+                        .eq(ProductReview::getSpuId, id)
+                        .eq(ProductReview::getStatus, 1)
+                        .eq(ProductReview::getReviewStatus, 1));
+        if (!reviews.isEmpty()) {
+            double avg = reviews.stream()
+                    .mapToInt(r -> r.getRating() != null ? r.getRating() : 0)
+                    .average()
+                    .orElse(0);
+            vo.setRating(Math.round(avg * 10) / 10.0);
+            vo.setReviewCount(reviews.size());
+        } else {
+            vo.setRating(0.0);
+            vo.setReviewCount(0);
+        }
 
         return vo;
     }

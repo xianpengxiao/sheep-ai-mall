@@ -91,4 +91,12 @@ public class OrderController {
     public R<OrderInfoVO> cancel(@Parameter(description = "订单ID") @PathVariable Long id) {
         return R.ok(orderService.cancel(id));
     }
+
+    @Operation(summary = "确认收货",
+            description = "将已发货(2)订单变为已完成(3)，为该订单每项商品生成待评价记录(15天有效期)。")
+    @PutMapping("/{id}/complete")
+    public R<Void> confirmReceipt(@Parameter(description = "订单ID") @PathVariable Long id) {
+        orderService.confirmReceipt(id);
+        return R.ok();
+    }
 }

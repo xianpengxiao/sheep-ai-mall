@@ -44,6 +44,9 @@ public class ReviewServiceImpl extends ServiceImpl<ProductReviewMapper, ProductR
     @Resource
     private MerchantService merchantService;
 
+    @Resource
+    private ProductReviewMapper productReviewMapper;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ReviewVO create(ReviewDTO dto) {
@@ -64,27 +67,45 @@ public class ReviewServiceImpl extends ServiceImpl<ProductReviewMapper, ProductR
         if (!order.getUserId().equals(userId)) {
             throw new BizException("无权评价他人的订单");
         }
-        if (order.getStatus() == null || order.getStatus() == 0 || order.getStatus() == 4) {
-            throw new BizException("仅已支付的订单可评价");
+        if (order.getStatus() == null || order.getStatus() != 3) {
+            throw new BizException("仅已完成的订单可评价");
         }
 
-        Long exist = this.lambdaQuery()
-                .eq(ProductReview::getOrderItemId, dto.getOrderItemId())
-                .count();
-        if (exist > 0) {
-            throw new BizException("该商品已评价，请勿重复提交");
+        // 查该订单明细的评价记录（原生SQL，不受 @TableLogic 影响）
+        ProductReview review = productReviewMapper.selectByOrderItemId(dto.getOrderItemId());
+        if (review == null) {
+            throw new BizException("该商品不可评价，请先确认收货");
         }
 
-        ProductReview review = new ProductReview();
-        BeanUtil.copyProperties(dto, review);
-        review.setSpuId(orderItem.getSpuId());
-        review.setSkuId(orderItem.getSkuId());
-        review.setUserId(userId);
+        // 三维评分 → 综合评分四舍五入
+        int ds = dto.getDescribeScore();
+        int ss = dto.getServiceScore();
+        int ls = dto.getLogisticsScore();
+        int rating = Math.round((ds + ss + ls) / 3.0f);
+        String content = dto.getContent() != null ? dto.getContent() : "";
+        String imageList = dto.getImageList() != null ? JSONUtil.toJsonStr(dto.getImageList()) : "[]";
+
+        if (review.getReviewStatus() == 1 && review.getDeleted() != null && review.getDeleted() == 1) {
+            // 已评且已删除 → 允许重新评论，原生SQL不受 @TableLogic 影响
+            productReviewMapper.updateForReReview(review.getId(), rating, ds, ss, ls, content, imageList);
+            // 重新查询完整记录用于返回
+            review = productReviewMapper.selectByOrderItemId(dto.getOrderItemId());
+            return toReviewVO(review);
+        }
+
+        if (review.getReviewStatus() != 0) {
+            throw new BizException("该商品已评价或已过期");
+        }
+
+        review.setRating(rating);
+        review.setDescribeScore(ds);
+        review.setServiceScore(ss);
+        review.setLogisticsScore(ls);
+        review.setContent(content);
+        review.setImageList(imageList);
         review.setStatus(1);
-        if (dto.getImageList() != null) {
-            review.setImageList(JSONUtil.toJsonStr(dto.getImageList()));
-        }
-        this.save(review);
+        review.setReviewStatus(1);
+        this.updateById(review);
 
         log.info("商品评价已提交 reviewId={}, userId={}, spuId={}", review.getId(), userId, orderItem.getSpuId());
         return toReviewVO(review);
@@ -108,7 +129,7 @@ public class ReviewServiceImpl extends ServiceImpl<ProductReviewMapper, ProductR
     }
 
     @Override
-    public Page<ReviewVO> pageByMerchant(int pageNum, int pageSize) {
+    public Page<ReviewVO> pageByMerchant(int pageNum, int pageSize, Integer status, Integer reviewStatus, String keyword) {
         Long userId = UserContext.getUserId();
         Merchant merchant = merchantService.lambdaQuery()
                 .eq(Merchant::getUserId, userId)
@@ -127,10 +148,15 @@ public class ReviewServiceImpl extends ServiceImpl<ProductReviewMapper, ProductR
             return new Page<>(pageNum, pageSize);
         }
 
+        int displayStatus = status != null ? status : 1;
+
         Page<ProductReview> page = this.page(
                 new Page<>(pageNum, pageSize),
                 new LambdaQueryWrapper<ProductReview>()
                         .in(ProductReview::getSpuId, spuIds)
+                        .eq(ProductReview::getStatus, displayStatus)
+                        .eq(reviewStatus != null, ProductReview::getReviewStatus, reviewStatus)
+                        .like(StrUtil.isNotBlank(keyword), ProductReview::getContent, keyword)
                         .orderByDesc(ProductReview::getCreateTime));
 
         return toReviewVOPage(page);
@@ -174,6 +200,37 @@ public class ReviewServiceImpl extends ServiceImpl<ProductReviewMapper, ProductR
         log.info("用户删除自己的评价 reviewId={}, userId={}", id, userId);
     }
 
+    @Override
+    public ReviewVO getByOrderItemId(Long orderItemId) {
+        ProductReview review = this.lambdaQuery()
+                .eq(ProductReview::getOrderItemId, orderItemId)
+                .one();
+        if (review == null) {
+            throw new BizException(ResultCode.NOT_FOUND.getCode(), "评价不存在");
+        }
+        Long userId = UserContext.getUserId();
+        if (!review.getUserId().equals(userId)) {
+            throw new BizException("无权查看他人的评价");
+        }
+        return toReviewVO(review);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void toggleMyStatus(Long id, Integer status) {
+        ProductReview review = this.getById(id);
+        if (review == null) {
+            throw new BizException(ResultCode.NOT_FOUND.getCode(), "评价不存在");
+        }
+        Long userId = UserContext.getUserId();
+        if (!review.getUserId().equals(userId)) {
+            throw new BizException("只能操作自己的评价");
+        }
+        review.setStatus(status);
+        this.updateById(review);
+        log.info("用户已{}评价 reviewId={}", status == 1 ? "显示" : "隐藏", id);
+    }
+
     // =========== helpers ===========
 
     private ReviewVO toReviewVO(ProductReview review) {
@@ -182,10 +239,10 @@ public class ReviewServiceImpl extends ServiceImpl<ProductReviewMapper, ProductR
         if (StrUtil.isNotBlank(review.getImageList())) {
             vo.setImageList(JSONUtil.toList(review.getImageList(), String.class));
         }
+        Spu spu = spuService.getById(review.getSpuId());
+        if (spu != null) vo.setSpuName(spu.getName());
         Sku sku = skuService.getById(review.getSkuId());
-        if (sku != null) {
-            vo.setSkuName(sku.getSkuName());
-        }
+        if (sku != null) vo.setSkuName(sku.getSkuName());
         SysUser user = sysUserService.getById(review.getUserId());
         if (user != null) {
             vo.setUsername(user.getUsername());
@@ -204,6 +261,10 @@ public class ReviewServiceImpl extends ServiceImpl<ProductReviewMapper, ProductR
         Map<Long, Sku> skuMap = skuService.listByIds(skuIds).stream()
                 .collect(Collectors.toMap(Sku::getId, s -> s, (a, b) -> a));
 
+        Set<Long> spuIds = records.stream().map(ProductReview::getSpuId).collect(Collectors.toSet());
+        Map<Long, String> spuNameMap = spuService.listByIds(spuIds).stream()
+                .collect(Collectors.toMap(Spu::getId, Spu::getName, (a, b) -> a));
+
         Set<Long> userIds = records.stream().map(ProductReview::getUserId).collect(Collectors.toSet());
         Map<Long, SysUser> userMap = sysUserService.listByIds(userIds).stream()
                 .collect(Collectors.toMap(SysUser::getId, u -> u, (a, b) -> a));
@@ -214,6 +275,7 @@ public class ReviewServiceImpl extends ServiceImpl<ProductReviewMapper, ProductR
             if (StrUtil.isNotBlank(r.getImageList())) {
                 vo.setImageList(JSONUtil.toList(r.getImageList(), String.class));
             }
+            vo.setSpuName(spuNameMap.get(r.getSpuId()));
             Sku sku = skuMap.get(r.getSkuId());
             if (sku != null) vo.setSkuName(sku.getSkuName());
             SysUser user = userMap.get(r.getUserId());

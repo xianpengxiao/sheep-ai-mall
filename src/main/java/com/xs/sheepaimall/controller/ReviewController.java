@@ -38,6 +38,22 @@ public class ReviewController {
         return R.ok(reviewService.pageBySpu(spuId, pageNum, pageSize));
     }
 
+    @Operation(summary = "自己的评价详情", description = "通过订单明细ID查询当前用户自己的评价（评论后展示用）")
+    @GetMapping("/item/{orderItemId}")
+    public R<ReviewVO> getByOrderItemId(
+            @Parameter(description = "订单明细ID") @PathVariable Long orderItemId) {
+        return R.ok(reviewService.getByOrderItemId(orderItemId));
+    }
+
+    @Operation(summary = "显示/隐藏自己的评价", description = "用户控制自己的评价在前端是否显示 1显示 0隐藏")
+    @PutMapping("/{id}/status")
+    public R<Void> toggleMyStatus(
+            @Parameter(description = "评价ID") @PathVariable Long id,
+            @Parameter(description = "状态 1显示 0隐藏") @RequestParam Integer status) {
+        reviewService.toggleMyStatus(id, status);
+        return R.ok();
+    }
+
     @Operation(summary = "删除自己的评价", description = "只能删除自己的评价")
     @DeleteMapping("/{id}")
     public R<Void> delete(@Parameter(description = "评价ID") @PathVariable Long id) {

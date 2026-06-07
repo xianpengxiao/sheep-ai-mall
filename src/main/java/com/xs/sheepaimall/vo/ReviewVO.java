@@ -17,6 +17,9 @@ public class ReviewVO {
     @Schema(description = "商品SPU ID")
     private Long spuId;
 
+    @Schema(description = "商品SPU名称")
+    private String spuName;
+
     @Schema(description = "商品SKU名称")
     private String skuName;
 
@@ -32,6 +35,15 @@ public class ReviewVO {
     @Schema(description = "评分 1-5")
     private Integer rating;
 
+    @Schema(description = "描述相符评分 1-5")
+    private Integer describeScore;
+
+    @Schema(description = "服务态度评分 1-5")
+    private Integer serviceScore;
+
+    @Schema(description = "物流服务评分 1-5")
+    private Integer logisticsScore;
+
     @Schema(description = "评价内容")
     private String content;
 
@@ -40,4 +52,16 @@ public class ReviewVO {
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
+
+    @Schema(description = "订单ID")
+    private Long orderId;
+
+    @Schema(description = "订单明细ID")
+    private Long orderItemId;
+
+    @Schema(description = "显示状态 0隐藏 1显示")
+    private Integer status;
+
+    @Schema(description = "评价状态 0待评 1已评 2已过期")
+    private Integer reviewStatus;
 }

@@ -155,8 +155,9 @@ public class CacheHelper {
         log.debug("分类树缓存已清除");
     }
 
-    /** 清除商品详情缓存 */
+    /** 清除商品详情缓存（兼容新旧版本 key） */
     public void evictSpuDetail(Long spuId) {
+        evict(CacheConstants.SPU_DETAIL + "::" + spuId + "::v2");
         evict(CacheConstants.SPU_DETAIL + "::" + spuId);
         log.debug("商品详情缓存已清除 spuId={}", spuId);
     }

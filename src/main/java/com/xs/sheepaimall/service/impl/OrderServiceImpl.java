@@ -14,6 +14,7 @@ import com.xs.sheepaimall.dto.OrderItemDTO;
 import com.xs.sheepaimall.dto.StockDeductMessage;
 import com.xs.sheepaimall.entity.*;
 import com.xs.sheepaimall.mapper.OrderInfoMapper;
+import com.xs.sheepaimall.mapper.ProductReviewMapper;
 import com.xs.sheepaimall.security.UserContext;
 import com.xs.sheepaimall.service.*;
 import com.xs.sheepaimall.vo.OrderInfoVO;
@@ -65,6 +66,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
 
     @Resource
     private RabbitTemplate rabbitTemplate;
+
+    @Resource
+    private ProductReviewMapper productReviewMapper;
 
     // ==================== 下单 ====================
 
@@ -189,8 +193,16 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         Map<Long, String> spuNameMap = spuService.listByIds(spuIds).stream()
                 .collect(Collectors.toMap(Spu::getId, Spu::getName, (a, b) -> a));
 
+        // 批量查询评价状态
+        Set<Long> orderItemIds = allItems.stream().map(OrderItem::getId).collect(Collectors.toSet());
+        List<ProductReview> reviews = productReviewMapper.selectList(
+                new LambdaQueryWrapper<ProductReview>()
+                        .in(ProductReview::getOrderItemId, orderItemIds));
+        Map<Long, Integer> reviewStatusMap = reviews.stream()
+                .collect(Collectors.toMap(ProductReview::getOrderItemId, ProductReview::getReviewStatus, (a, b) -> a));
+
         List<OrderInfoVO> voList = orders.stream()
-                .map(order -> toOrderVO(order, itemMap.getOrDefault(order.getId(), List.of()), spuNameMap))
+                .map(order -> toOrderVO(order, itemMap.getOrDefault(order.getId(), List.of()), spuNameMap, reviewStatusMap))
                 .collect(Collectors.toList());
 
         Page<OrderInfoVO> result = new Page<>(pageNum, pageSize);
@@ -251,6 +263,50 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         }
 
         return buildOrderVO(order, items);
+    }
+
+    // ==================== 确认收货 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void confirmReceipt(Long orderId) {
+        Long userId = UserContext.getUserId();
+        OrderInfo order = this.getById(orderId);
+        if (order == null) {
+            throw new BizException(ResultCode.NOT_FOUND.getCode(), "订单不存在");
+        }
+        if (!order.getUserId().equals(userId)) {
+            throw new BizException("无权操作他人的订单");
+        }
+        if (order.getStatus() == null || order.getStatus() != 2) {
+            throw new BizException("仅已发货的订单可确认收货，当前状态：" + getStatusText(order.getStatus()));
+        }
+
+        // 更新订单状态
+        order.setStatus(3);
+        order.setFinishTime(LocalDateTime.now());
+        this.updateById(order);
+
+        // 生成待评记录
+        List<OrderItem> items = orderItemService.list(
+                new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, orderId));
+        for (OrderItem item : items) {
+            Long exist = productReviewMapper.selectCount(
+                    new LambdaQueryWrapper<ProductReview>()
+                            .eq(ProductReview::getOrderItemId, item.getId()));
+            if (exist > 0) continue;
+
+            ProductReview review = new ProductReview();
+            review.setSpuId(item.getSpuId());
+            review.setSkuId(item.getSkuId());
+            review.setOrderId(orderId);
+            review.setOrderItemId(item.getId());
+            review.setUserId(userId);
+            review.setReviewStatus(0);
+            review.setExpiredAt(LocalDateTime.now().plusDays(15));
+            productReviewMapper.insert(review);
+        }
+        log.info("订单已确认收货 orderId={}, userId={}", orderId, userId);
     }
 
     // ==================== 支付状态更新（支付回调专用） ====================
@@ -385,7 +441,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         return timestamp + random;
     }
 
-    /** 组装 OrderInfoVO（含 SPU 名称批量查询） */
+    /** 组装 OrderInfoVO（含 SPU 名称批量查询 + 评价状态） */
     private OrderInfoVO buildOrderVO(OrderInfo order, List<OrderItem> items) {
         OrderInfoVO vo = new OrderInfoVO();
         BeanUtil.copyProperties(order, vo);
@@ -396,11 +452,20 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         Map<Long, String> spuNameMap = spuService.listByIds(spuIds).stream()
                 .collect(Collectors.toMap(Spu::getId, Spu::getName, (a, b) -> a));
 
+        // 批量查询评价状态
+        Set<Long> orderItemIds = items.stream().map(OrderItem::getId).collect(Collectors.toSet());
+        List<ProductReview> reviews = productReviewMapper.selectList(
+                new LambdaQueryWrapper<ProductReview>()
+                        .in(ProductReview::getOrderItemId, orderItemIds));
+        Map<Long, Integer> reviewStatusMap = reviews.stream()
+                .collect(Collectors.toMap(ProductReview::getOrderItemId, ProductReview::getReviewStatus, (a, b) -> a));
+
         List<OrderItemVO> itemVOs = items.stream()
                 .map(item -> {
                     OrderItemVO iv = new OrderItemVO();
                     BeanUtil.copyProperties(item, iv);
                     iv.setSpuName(spuNameMap.get(item.getSpuId()));
+                    iv.setReviewStatus(reviewStatusMap.get(item.getId()));
                     return iv;
                 })
                 .collect(Collectors.toList());
@@ -409,7 +474,8 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     }
 
     /** 组装 OrderInfoVO（复用已有 SPU 名称映射，避免重复查库） */
-    private OrderInfoVO toOrderVO(OrderInfo order, List<OrderItem> items, Map<Long, String> spuNameMap) {
+    private OrderInfoVO toOrderVO(OrderInfo order, List<OrderItem> items, Map<Long, String> spuNameMap,
+                                  Map<Long, Integer> reviewStatusMap) {
         OrderInfoVO vo = new OrderInfoVO();
         BeanUtil.copyProperties(order, vo);
         vo.setStatusText(getStatusText(order.getStatus()));
@@ -419,6 +485,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
                     OrderItemVO iv = new OrderItemVO();
                     BeanUtil.copyProperties(item, iv);
                     iv.setSpuName(spuNameMap.get(item.getSpuId()));
+                    iv.setReviewStatus(reviewStatusMap.get(item.getId()));
                     return iv;
                 })
                 .collect(Collectors.toList());

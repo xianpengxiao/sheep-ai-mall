@@ -39,4 +39,7 @@ public class OrderItemVO {
 
     @Schema(description = "商品图片快照")
     private String image;
+
+    @Schema(description = "评价状态 0待评 1已评 2已过期（未完成订单为null）")
+    private Integer reviewStatus;
 }

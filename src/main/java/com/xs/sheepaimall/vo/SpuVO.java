@@ -20,6 +20,24 @@ public class SpuVO {
     @Schema(description = "分类名称")
     private String categoryName;
 
+    @Schema(description = "商家ID")
+    private Long merchantId;
+
+    @Schema(description = "店铺名称")
+    private String shopName;
+
+    @Schema(description = "店铺logo")
+    private String shopLogo;
+
+    @Schema(description = "店铺描述相符评分")
+    private Double shopDescribeScore;
+
+    @Schema(description = "店铺服务态度评分")
+    private Double shopServiceScore;
+
+    @Schema(description = "店铺物流服务评分")
+    private Double shopLogisticsScore;
+
     @Schema(description = "商品名称")
     private String name;
 
@@ -43,6 +61,12 @@ public class SpuVO {
 
     @Schema(description = "销量")
     private Integer salesCount;
+
+    @Schema(description = "平均评分")
+    private Double rating;
+
+    @Schema(description = "评价数")
+    private Integer reviewCount;
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;

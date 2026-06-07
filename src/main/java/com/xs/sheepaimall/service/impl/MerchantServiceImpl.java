@@ -16,6 +16,7 @@ import com.xs.sheepaimall.mapper.MerchantMapper;
 import com.xs.sheepaimall.mapper.OrderInfoMapper;
 import com.xs.sheepaimall.mapper.SysUserRoleMapper;
 import com.xs.sheepaimall.security.UserContext;
+import com.xs.sheepaimall.service.MerchantDsrService;
 import com.xs.sheepaimall.service.MerchantService;
 import com.xs.sheepaimall.service.OrderItemService;
 import com.xs.sheepaimall.service.SkuService;
@@ -48,6 +49,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     private OrderInfoMapper orderInfoMapper;
 
     @Resource
+    @org.springframework.context.annotation.Lazy
     private SpuService spuService;
 
     @Resource
@@ -65,12 +67,16 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     @Resource
     private CacheHelper cacheHelper;
 
+    @Resource
+    private MerchantDsrService merchantDsrService;
+
     // ==================== 买家端 ====================
 
     @Override
     public Page<MerchantVO> pageMerchant(int pageNum, int pageSize, String shopName, String businessScope) {
         LambdaQueryWrapper<Merchant> wrapper = new LambdaQueryWrapper<Merchant>()
                 .eq(Merchant::getStatus, 1)
+                .eq(Merchant::getShopStatus, 1)
                 .like(StrUtil.isNotBlank(shopName), Merchant::getShopName, shopName)
                 .like(StrUtil.isNotBlank(businessScope), Merchant::getBusinessScope, businessScope)
                 .orderByDesc(Merchant::getCreateTime);
@@ -262,12 +268,13 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     }
 
     @Override
-    public Page<Spu> pageMyGoods(int pageNum, int pageSize, String keyword) {
+    public Page<Spu> pageMyGoods(int pageNum, int pageSize, String keyword, Long categoryId) {
         Merchant merchant = getCurrentMerchant();
         return spuService.page(
                 new Page<>(pageNum, pageSize),
                 new LambdaQueryWrapper<Spu>()
                         .eq(Spu::getMerchantId, merchant.getId())
+                        .eq(categoryId != null, Spu::getCategoryId, categoryId)
                         .like(StrUtil.isNotBlank(keyword), Spu::getName, keyword)
                         .orderByDesc(Spu::getCreateTime));
     }
@@ -586,11 +593,40 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         log.info("商家状态已变更 merchantId={}, status={}", id, status);
     }
 
+    @Override
+    public Long getCurrentMerchantId() {
+        return getCurrentMerchant().getId();
+    }
+
+    @Override
+    public Integer getMyShopStatus() {
+        return getCurrentMerchant().getShopStatus();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Integer toggleShopStatus() {
+        Merchant merchant = getCurrentMerchant();
+        int newStatus = (merchant.getShopStatus() == null || merchant.getShopStatus() == 0) ? 1 : 0;
+        merchant.setShopStatus(newStatus);
+        this.updateById(merchant);
+        log.info("商家营业状态切换 merchantId={}, newStatus={}", merchant.getId(), newStatus);
+        return newStatus;
+    }
+
     // ==================== 内部方法 ====================
 
     private MerchantVO toSimpleVO(Merchant merchant) {
         MerchantVO vo = new MerchantVO();
         BeanUtil.copyProperties(merchant, vo);
+        // 注入 DSR 评分
+        MerchantDsrVO dsr = merchantDsrService.getLatestDsr(merchant.getId());
+        if (dsr != null) {
+            vo.setDescribeScore(dsr.getDescribeScore() != null ? dsr.getDescribeScore().doubleValue() : null);
+            vo.setServiceScore(dsr.getServiceScore() != null ? dsr.getServiceScore().doubleValue() : null);
+            vo.setLogisticsScore(dsr.getLogisticsScore() != null ? dsr.getLogisticsScore().doubleValue() : null);
+            vo.setDsrCount(dsr.getTotalCount());
+        }
         return vo;
     }
 

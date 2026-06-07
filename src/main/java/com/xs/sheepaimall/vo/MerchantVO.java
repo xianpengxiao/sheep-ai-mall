@@ -38,8 +38,23 @@ public class MerchantVO {
     @Schema(description = "状态 0待审核 1已开通 2已关闭")
     private Integer status;
 
+    @Schema(description = "营业状态 0已打烊 1营业中")
+    private Integer shopStatus;
+
     @Schema(description = "审核驳回原因")
     private String auditRemark;
+
+    @Schema(description = "描述相符评分")
+    private Double describeScore;
+
+    @Schema(description = "服务态度评分")
+    private Double serviceScore;
+
+    @Schema(description = "物流服务评分")
+    private Double logisticsScore;
+
+    @Schema(description = "评价数")
+    private Integer dsrCount;
 
     @Schema(description = "店铺在售商品列表（商家详情时返回）")
     private List<SpuVO> goodsList;

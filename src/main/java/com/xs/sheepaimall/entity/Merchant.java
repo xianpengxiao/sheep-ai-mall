@@ -39,6 +39,9 @@ public class Merchant {
     @Schema(description = "状态 0待审核 1已开通 2已关闭")
     private Integer status;
 
+    @Schema(description = "营业状态 0已打烊 1营业中")
+    private Integer shopStatus;
+
     @Schema(description = "审核驳回原因")
     private String auditRemark;
 

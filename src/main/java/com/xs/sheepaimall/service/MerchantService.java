@@ -47,7 +47,7 @@ public interface MerchantService extends IService<Merchant> {
     void updateGoodsStatus(Long id, Integer status);
 
     /** 商家商品列表分页 */
-    Page<Spu> pageMyGoods(int pageNum, int pageSize, String keyword);
+    Page<Spu> pageMyGoods(int pageNum, int pageSize, String keyword, Long categoryId);
 
     /** 店铺订单分页 */
     Page<MerchantOrderVO> pageMyOrders(int pageNum, int pageSize, Integer status);
@@ -71,4 +71,13 @@ public interface MerchantService extends IService<Merchant> {
 
     /** 禁用/启用商家 */
     void toggleMerchantStatus(Long id, Integer status);
+
+    /** 获取当前营业状态（商家后台） */
+    Integer getMyShopStatus();
+
+    /** 切换营业状态（商家打烊/开店） */
+    Integer toggleShopStatus();
+
+    /** 获取当前登录用户对应的已开通商家ID（商家后台专用） */
+    Long getCurrentMerchantId();
 }

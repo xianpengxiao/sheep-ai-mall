@@ -32,4 +32,7 @@ public interface OrderService extends IService<OrderInfo> {
 
     /** 取消订单：仅待支付状态可取消，回滚库存和销量 */
     OrderInfoVO cancel(Long orderId);
+
+    /** 确认收货：将已发货订单变为已完成，生成待评记录 */
+    void confirmReceipt(Long orderId);
 }
