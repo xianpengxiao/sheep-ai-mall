@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.annotation.*;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /** 商品SPU */
 @Data
@@ -48,6 +50,30 @@ public class Spu {
     @Schema(description = "营业状态 0已打烊 1营业中")
     @TableField(exist = false)
     private Integer shopStatus;
+
+    @Schema(description = "最低SKU价格")
+    @TableField(exist = false)
+    private BigDecimal minPrice;
+
+    @Schema(description = "所有启用SKU的库存总和")
+    @TableField(exist = false)
+    private Integer totalStock;
+
+    @Schema(description = "库存状态 0已售罄 1正常 2库存紧张(≤10)")
+    @TableField(exist = false)
+    private Integer stockStatus;
+
+    @Schema(description = "是否有多个规格")
+    @TableField(exist = false)
+    private Boolean multiSpec;
+
+    @Schema(description = "部分规格缺货")
+    @TableField(exist = false)
+    private Boolean partOutOfStock;
+
+    @Schema(description = "各SKU库存明细（悬浮提示用）")
+    @TableField(exist = false)
+    private List<com.xs.sheepaimall.vo.SkuStockVO> skuStockList;
 
     @Schema(description = "创建时间")
     @TableField(fill = FieldFill.INSERT)

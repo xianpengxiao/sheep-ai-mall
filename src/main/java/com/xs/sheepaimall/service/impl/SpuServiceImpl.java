@@ -32,6 +32,8 @@ import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -76,13 +78,16 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
 
         Page<Spu> page = this.page(new Page<>(dto.getPageNum(), dto.getPageSize()), wrapper);
 
-        // 批量填充商家营业状态
+        // 批量填充商家营业状态 + 最低SKU价格
         if (!page.getRecords().isEmpty()) {
+            List<Long> spuIds = page.getRecords().stream().map(Spu::getId).collect(Collectors.toList());
             List<Long> merchantIds = page.getRecords().stream()
                     .map(Spu::getMerchantId)
                     .filter(Objects::nonNull)
                     .distinct()
                     .collect(Collectors.toList());
+
+            // 商家营业状态
             if (!merchantIds.isEmpty()) {
                 Map<Long, Integer> shopStatusMap = merchantMapper.selectList(
                                 new LambdaQueryWrapper<Merchant>()
@@ -93,6 +98,21 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
                 page.getRecords().forEach(spu ->
                         spu.setShopStatus(shopStatusMap.get(spu.getMerchantId())));
             }
+
+            // 最低SKU价格
+            Map<Long, BigDecimal> minPriceMap = new HashMap<>();
+            skuService.lambdaQuery()
+                    .in(Sku::getSpuId, spuIds)
+                    .select(Sku::getSpuId, Sku::getPrice)
+                    .list()
+                    .forEach(sku -> {
+                        BigDecimal current = minPriceMap.get(sku.getSpuId());
+                        if (current == null || sku.getPrice().compareTo(current) < 0) {
+                            minPriceMap.put(sku.getSpuId(), sku.getPrice());
+                        }
+                    });
+            page.getRecords().forEach(spu ->
+                    spu.setMinPrice(minPriceMap.get(spu.getId())));
         }
 
         return page;
@@ -272,6 +292,10 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
         BeanUtil.copyProperties(dto, sku);
         if (dto.getSpecInfo() != null) {
             sku.setSpecInfo(JSONUtil.toJsonStr(dto.getSpecInfo()));
+        }
+        // sku_code 为空时自动生成（数据库 NOT NULL + UNIQUE）
+        if (StrUtil.isBlank(sku.getSkuCode())) {
+            sku.setSkuCode("SKU" + System.currentTimeMillis() + (int) (Math.random() * 1000));
         }
         return sku;
     }

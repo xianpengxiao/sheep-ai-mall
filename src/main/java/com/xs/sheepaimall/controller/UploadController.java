@@ -9,10 +9,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -52,6 +49,15 @@ public class UploadController {
             return R.ok(ossUtil.uploadBase64(avatarUrl, type));
         }
         return R.fail("请提供 file 或 avatarUrl 参数");
+    }
+
+    @Operation(summary = "删除已上传的图片",
+            description = "商品创建失败后清理已上传的图片，避免残图残留 OSS")
+    @DeleteMapping("/image")
+    public R<Void> deleteImage(
+            @Parameter(description = "图片完整URL（上传接口返回的值）") @RequestParam String url) {
+        ossUtil.deleteByUrl(url);
+        return R.ok();
     }
 
     /**

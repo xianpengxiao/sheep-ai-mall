@@ -234,6 +234,10 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
             throw new BizException(ResultCode.NOT_FOUND.getCode(), "商品不存在或不属于您的店铺");
         }
 
+        // 记录旧图片URL，用于后续清理OSS残图
+        List<String> oldImages = parseImageList(existSpu.getImageList());
+        String oldMainImage = existSpu.getMainImage();
+
         Spu spu = new Spu();
         BeanUtil.copyProperties(dto, spu);
         spu.setId(id);
@@ -249,6 +253,18 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                     .collect(Collectors.toList());
             skuList.forEach(s -> s.setSpuId(spu.getId()));
             skuService.batchSaveOrUpdate(spu.getId(), skuList);
+        }
+
+        // 清理OSS旧图片（新列表中不含的旧图）
+        List<String> newImages = dto.getImageList();
+        if (oldImages != null && newImages != null) {
+            oldImages.stream()
+                    .filter(img -> !newImages.contains(img))
+                    .forEach(ossUtil::deleteByUrl);
+        }
+        // 主图变更也清理
+        if (oldMainImage != null && dto.getMainImage() != null && !oldMainImage.equals(dto.getMainImage())) {
+            ossUtil.deleteByUrl(oldMainImage);
         }
 
         cacheHelper.evictSpuDetail(id);
@@ -270,13 +286,66 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     @Override
     public Page<Spu> pageMyGoods(int pageNum, int pageSize, String keyword, Long categoryId) {
         Merchant merchant = getCurrentMerchant();
-        return spuService.page(
+        Page<Spu> page = spuService.page(
                 new Page<>(pageNum, pageSize),
                 new LambdaQueryWrapper<Spu>()
                         .eq(Spu::getMerchantId, merchant.getId())
                         .eq(categoryId != null, Spu::getCategoryId, categoryId)
                         .like(StrUtil.isNotBlank(keyword), Spu::getName, keyword)
                         .orderByDesc(Spu::getCreateTime));
+
+        // 批量填充SKU相关字段（价格、库存、多规格）
+        if (!page.getRecords().isEmpty()) {
+            List<Long> spuIds = page.getRecords().stream().map(Spu::getId).collect(Collectors.toList());
+            // 一次查出所有SKU
+            List<Sku> allSkus = skuService.lambdaQuery()
+                    .in(Sku::getSpuId, spuIds)
+                    .select(Sku::getSpuId, Sku::getId, Sku::getSkuName, Sku::getPrice, Sku::getStock, Sku::getStatus)
+                    .list();
+            Map<Long, List<Sku>> skuMap = allSkus.stream()
+                    .collect(Collectors.groupingBy(Sku::getSpuId));
+
+            for (Spu spu : page.getRecords()) {
+                List<Sku> skus = skuMap.get(spu.getId());
+                if (skus == null || skus.isEmpty()) continue;
+
+                // 仅统计启用中的SKU
+                List<Sku> activeSkus = skus.stream()
+                        .filter(s -> s.getStatus() != null && s.getStatus() == 1)
+                        .collect(Collectors.toList());
+
+                long totalStock = 0;
+                long lowStockCount = 0;
+                List<com.xs.sheepaimall.vo.SkuStockVO> stockList = new ArrayList<>();
+                for (Sku s : activeSkus) {
+                    int stock = s.getStock() != null ? s.getStock() : 0;
+                    totalStock += stock;
+                    if (stock < 20) lowStockCount++;
+
+                    com.xs.sheepaimall.vo.SkuStockVO vo = new com.xs.sheepaimall.vo.SkuStockVO();
+                    vo.setSkuId(s.getId());
+                    vo.setSkuName(s.getSkuName());
+                    vo.setPrice(s.getPrice());
+                    vo.setStock(s.getStock());
+                    stockList.add(vo);
+                }
+
+                BigDecimal minPrice = activeSkus.stream()
+                        .map(Sku::getPrice)
+                        .filter(Objects::nonNull)
+                        .min(Comparator.naturalOrder())
+                        .orElse(null);
+
+                spu.setTotalStock((int) totalStock);
+                spu.setStockStatus(totalStock == 0 ? 0 : totalStock <= 50 ? 2 : 1);
+                spu.setMultiSpec(skus.size() > 1);
+                spu.setPartOutOfStock(activeSkus.size() > 1 && lowStockCount > 0 && lowStockCount < activeSkus.size());
+                spu.setSkuStockList(stockList);
+                spu.setMinPrice(minPrice);
+            }
+        }
+
+        return page;
     }
 
     @Override
@@ -645,7 +714,21 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         if (dto.getSpecInfo() != null) {
             sku.setSpecInfo(JSONUtil.toJsonStr(dto.getSpecInfo()));
         }
+        // sku_code 为空时自动生成（数据库 NOT NULL + UNIQUE）
+        if (StrUtil.isBlank(sku.getSkuCode())) {
+            sku.setSkuCode("SKU" + System.currentTimeMillis() + (int) (Math.random() * 1000));
+        }
         return sku;
+    }
+
+    /** 解析 imageList JSON → List<String> */
+    private List<String> parseImageList(String imageListJson) {
+        if (StrUtil.isBlank(imageListJson)) return null;
+        try {
+            return JSONUtil.toList(imageListJson, String.class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private String getStatusText(Integer status) {

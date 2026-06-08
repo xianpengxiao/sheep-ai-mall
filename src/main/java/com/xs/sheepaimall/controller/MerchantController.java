@@ -106,7 +106,7 @@ public class MerchantController {
     }
 
     @Operation(summary = "商品上下架")
-    @PatchMapping("/goods/{id}/status")
+    @PutMapping("/goods/{id}/status")
     @RequirePermission("merchant:goods:manage")
     public R<Void> updateGoodsStatus(
             @Parameter(description = "商品ID") @PathVariable Long id,
