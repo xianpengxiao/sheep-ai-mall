@@ -4,6 +4,7 @@ import com.xs.sheepaimall.common.R;
 import com.xs.sheepaimall.dto.ChangePasswordDTO;
 import com.xs.sheepaimall.dto.LoginDTO;
 import com.xs.sheepaimall.dto.RegisterDTO;
+import com.xs.sheepaimall.dto.VerifyCodeDTO;
 import com.xs.sheepaimall.entity.SysUser;
 import com.xs.sheepaimall.security.RequirePermission;
 import com.xs.sheepaimall.security.UserContext;
@@ -48,7 +49,26 @@ public class AuthController {
         return R.ok();
     }
 
-    @Operation(summary = "注册新账号", description = "创建系统用户，自动分配默认角色（只读）")
+    @Operation(summary = "检查手机号是否已注册")
+    @GetMapping("/check-phone")
+    public R<Boolean> checkPhone(@RequestParam String phone) {
+        return R.ok(sysUserService.checkPhoneExists(phone));
+    }
+
+    @Operation(summary = "发送短信验证码", description = "校验手机号格式和唯一性，60秒内不可重复发送")
+    @PostMapping("/send-code")
+    public R<String> sendCode(@RequestParam String phone) {
+        sysUserService.sendVerifyCode(phone);
+        return R.ok("验证码已发送");
+    }
+
+    @Operation(summary = "校验短信验证码", description = "验证码正确后标记手机号已验证（有效期10分钟），用于注册时校验")
+    @PostMapping("/verify-code")
+    public R<Boolean> verifyCode(@Valid @RequestBody VerifyCodeDTO dto) {
+        return R.ok(sysUserService.verifyCode(dto.getPhone(), dto.getCode()));
+    }
+
+    @Operation(summary = "注册新账号", description = "创建系统用户，自动分配默认角色（只读），手机号需先通过验证码验证")
     @PostMapping("/register")
     public R<Long> register(@Valid @RequestBody RegisterDTO dto) {
         SysUser user = sysUserService.register(dto);
@@ -92,7 +112,8 @@ public class AuthController {
         return R.ok(LoginVO.builder()
                 .userId(userId)
                 .username(username)
-                .roles(UserContext.getPermissions())
+                .roles(UserContext.getRoles())
+                .permissions(UserContext.getPermissions())
                 .build());
     }
 

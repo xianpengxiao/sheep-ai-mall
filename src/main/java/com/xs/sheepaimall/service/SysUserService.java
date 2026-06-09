@@ -44,4 +44,13 @@ public interface SysUserService extends IService<SysUser> {
 
     /** [管理员] 查询所有可用角色 */
     List<SysRole> listAllRoles();
+
+    /** 检查手机号是否已注册 */
+    boolean checkPhoneExists(String phone);
+
+    /** 发送短信验证码 */
+    void sendVerifyCode(String phone);
+
+    /** 校验短信验证码 */
+    boolean verifyCode(String phone, String code);
 }

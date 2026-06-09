@@ -25,6 +25,7 @@ public class RegisterDTO {
     @Schema(description = "真实姓名", example = "张三")
     private String realName;
 
+    @NotBlank(message = "手机号不能为空")
     @Schema(description = "手机号", example = "13800138000")
     private String phone;
 

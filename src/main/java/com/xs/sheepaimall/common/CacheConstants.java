@@ -46,4 +46,18 @@ public final class CacheConstants {
 
     /** 轮询间隔 100ms */
     public static final long LOCK_RETRY_INTERVAL_MS = 100;
+
+    // ============ 短信验证码 ============
+
+    /** 验证码 Redis key 前缀 */
+    public static final String SMS_CODE_PREFIX = "sms::code::";
+
+    /** 验证码发送间隔限制 Redis key 前缀（60秒） */
+    public static final String SMS_LIMIT_PREFIX = "sms::limit::";
+
+    /** 已验证手机号标记 Redis key 前缀 */
+    public static final String SMS_VERIFIED_PREFIX = "sms::verified::";
+
+    /** 验证码有效期 5 分钟 */
+    public static final long SMS_CODE_TTL = 5 * 60;
 }

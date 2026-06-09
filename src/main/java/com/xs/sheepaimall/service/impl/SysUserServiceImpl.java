@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.xs.sheepaimall.common.AccountStatusException;
 import com.xs.sheepaimall.common.BizException;
+import com.xs.sheepaimall.common.CacheConstants;
 import com.xs.sheepaimall.dto.LoginDTO;
 import com.xs.sheepaimall.dto.RegisterDTO;
 import com.xs.sheepaimall.entity.SysRole;
@@ -18,6 +19,7 @@ import com.xs.sheepaimall.security.AuthInterceptor;
 import com.xs.sheepaimall.security.JwtUtil;
 import com.xs.sheepaimall.service.SysUserService;
 import com.xs.sheepaimall.vo.LoginVO;
+import com.xs.sheepaimall.util.SmsUtil;
 import io.jsonwebtoken.Claims;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -59,6 +61,9 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private SmsUtil smsUtil;
+
     @Value("${sheep.jwt.expiration}")
     private long jwtExpiration;
 
@@ -93,7 +98,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 
         log.info("用户 {} 登录成功，角色：{}，权限数：{}", dto.getUsername(), roles, permissions.size());
 
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), permissions);
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), permissions, roles);
 
         user.setLastLogin(LocalDateTime.now());
         this.updateById(user);
@@ -129,12 +134,23 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public SysUser register(RegisterDTO dto) {
+        // 校验手机验证码
+        String verifiedKey = CacheConstants.SMS_VERIFIED_PREFIX + dto.getPhone();
+        String verified = stringRedisTemplate.opsForValue().get(verifiedKey);
+        if (!"1".equals(verified)) {
+            throw new BizException("手机号未通过验证码验证");
+        }
+
         SysUser existing = this.getOne(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, dto.getUsername()));
         if (existing != null) {
             throw new BizException("账号已存在：" + dto.getUsername());
         }
+
+        // 清除已验证标记
+        stringRedisTemplate.delete(verifiedKey);
 
         SysUser user = new SysUser();
         user.setUsername(dto.getUsername());
@@ -255,6 +271,53 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
                         .eq(SysRole::getStatus, 1)
                         .orderByAsc(SysRole::getSortOrder)
         );
+    }
+
+    @Override
+    public boolean checkPhoneExists(String phone) {
+        return this.lambdaQuery().eq(SysUser::getPhone, phone).count() > 0;
+    }
+
+    @Override
+    public void sendVerifyCode(String phone) {
+        // 校验手机号格式
+        if (phone == null || !phone.matches("^1[3-9]\\d{9}$")) {
+            throw new BizException("手机号格式不正确");
+        }
+        // 校验是否已注册
+        if (checkPhoneExists(phone)) {
+            throw new BizException("该手机号已注册");
+        }
+        // 60秒内不能重复发送
+        String limitKey = CacheConstants.SMS_LIMIT_PREFIX + phone;
+        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(limitKey))) {
+            throw new BizException("验证码已发送，请60秒后重试");
+        }
+        // 生成6位数字验证码
+        String code = String.format("%06d", (int) (Math.random() * 1000000));
+        // 存入Redis，有效期5分钟
+        String codeKey = CacheConstants.SMS_CODE_PREFIX + phone;
+        stringRedisTemplate.opsForValue().set(codeKey, code, java.time.Duration.ofSeconds(CacheConstants.SMS_CODE_TTL));
+        // 发送限制标记，60秒过期
+        stringRedisTemplate.opsForValue().set(limitKey, "1", java.time.Duration.ofSeconds(60));
+
+        smsUtil.sendCode(phone, code);
+    }
+
+    @Override
+    public boolean verifyCode(String phone, String code) {
+        if (phone == null || code == null) return false;
+        String codeKey = CacheConstants.SMS_CODE_PREFIX + phone;
+        String saved = stringRedisTemplate.opsForValue().get(codeKey);
+        if (saved == null) return false;
+        boolean valid = saved.equals(code);
+        if (valid) {
+            // 验证成功后删除验证码，标记该手机号已验证
+            stringRedisTemplate.delete(codeKey);
+            String verifiedKey = CacheConstants.SMS_VERIFIED_PREFIX + phone;
+            stringRedisTemplate.opsForValue().set(verifiedKey, "1", java.time.Duration.ofMinutes(10));
+        }
+        return valid;
     }
 
     /** 使用 BCrypt 加密明文密码（供初始化 / 新增用户使用） */

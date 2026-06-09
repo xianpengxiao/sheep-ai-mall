@@ -89,10 +89,12 @@ public class AuthInterceptor implements HandlerInterceptor {
         Long userId = jwtUtil.getUserId(claims);
         String username = jwtUtil.getUsername(claims);
         List<String> permissions = jwtUtil.getPermissions(claims);
+        List<String> roles = jwtUtil.getRoles(claims);
 
         UserContext.setUserId(userId);
         UserContext.setUsername(username);
         UserContext.setPermissions(permissions);
+        UserContext.setRoles(roles);
         UserContext.setToken(token); // 供退出登录时获取
 
         // 5. 检查方法权限注解

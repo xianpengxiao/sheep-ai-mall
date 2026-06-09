@@ -21,6 +21,8 @@ public class JwtUtil {
 
     /** JWT Claims 中的权限字段名 */
     public static final String CLAIM_PERMISSIONS = "perms";
+    /** JWT Claims 中的角色字段名 */
+    public static final String CLAIM_ROLES = "roles";
     /** JWT Claims 中的用户名字段名 */
     public static final String CLAIM_USERNAME = "username";
 
@@ -50,9 +52,10 @@ public class JwtUtil {
      * @param userId      用户ID
      * @param username    登录账号
      * @param permissions 权限标识列表
+     * @param roles       角色编码列表
      * @return JWT 字符串
      */
-    public String generateToken(Long userId, String username, List<String> permissions) {
+    public String generateToken(Long userId, String username, List<String> permissions, List<String> roles) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + expiration * 1000);
 
@@ -60,6 +63,7 @@ public class JwtUtil {
                 .subject(String.valueOf(userId))           // sub = 用户ID
                 .claim(CLAIM_USERNAME, username)           // 自定义：用户名
                 .claim(CLAIM_PERMISSIONS, permissions)     // 自定义：权限列表
+                .claim(CLAIM_ROLES, roles)                 // 自定义：角色列表
                 .issuedAt(now)                             // 签发时间
                 .expiration(expiryDate)                    // 过期时间
                 .signWith(secretKey)                       // HMAC-SHA256 签名
@@ -104,6 +108,14 @@ public class JwtUtil {
     @SuppressWarnings("unchecked")
     public List<String> getPermissions(Claims claims) {
         return claims.get(CLAIM_PERMISSIONS, List.class);
+    }
+
+    /**
+     * 从 Claims 中提取角色列表
+     */
+    @SuppressWarnings("unchecked")
+    public List<String> getRoles(Claims claims) {
+        return claims.get(CLAIM_ROLES, List.class);
     }
 
     /**
