@@ -8,6 +8,7 @@ import com.xs.sheepaimall.common.BizException;
 import com.xs.sheepaimall.common.CacheConstants;
 import com.xs.sheepaimall.dto.LoginDTO;
 import com.xs.sheepaimall.dto.RegisterDTO;
+import com.xs.sheepaimall.dto.UserProfileUpdateDTO;
 import com.xs.sheepaimall.entity.SysRole;
 import com.xs.sheepaimall.entity.SysUser;
 import com.xs.sheepaimall.entity.SysUserRole;
@@ -19,6 +20,8 @@ import com.xs.sheepaimall.security.AuthInterceptor;
 import com.xs.sheepaimall.security.JwtUtil;
 import com.xs.sheepaimall.service.SysUserService;
 import com.xs.sheepaimall.vo.LoginVO;
+import com.xs.sheepaimall.vo.UserProfileVO;
+import com.xs.sheepaimall.util.SensitiveWordUtil;
 import com.xs.sheepaimall.util.SmsUtil;
 import io.jsonwebtoken.Claims;
 import jakarta.annotation.Resource;
@@ -63,6 +66,9 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 
     @Resource
     private SmsUtil smsUtil;
+
+    @Resource
+    private SensitiveWordUtil sensitiveWordUtil;
 
     @Value("${sheep.jwt.expiration}")
     private long jwtExpiration;
@@ -396,5 +402,81 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     /** 使用 BCrypt 加密明文密码（供初始化 / 新增用户使用） */
     public static String encodePassword(String rawPassword) {
         return PASSWORD_ENCODER.encode(rawPassword);
+    }
+
+    @Override
+    public UserProfileVO getProfile(Long userId) {
+        SysUser user = this.getById(userId);
+        if (user == null) {
+            throw new BizException("用户不存在");
+        }
+        return toProfileVO(user);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public UserProfileVO updateProfile(Long userId, UserProfileUpdateDTO dto) {
+        SysUser user = this.getById(userId);
+        if (user == null) {
+            throw new BizException("用户不存在");
+        }
+
+        // 昵称敏感词校验
+        if (dto.getNickname() != null) {
+            List<String> sensitive = sensitiveWordUtil.checkSensitive(dto.getNickname());
+            if (!sensitive.isEmpty()) {
+                log.warn("昵称包含敏感词：{}, 词={}", dto.getNickname(), sensitive);
+                throw new BizException("昵称包含违规内容，请修改");
+            }
+            user.setNickname(dto.getNickname());
+        }
+
+        if (dto.getGender() != null) {
+            if (dto.getGender() < 0 || dto.getGender() > 2) {
+                throw new BizException("性别值无效 0未知 1男 2女");
+            }
+            user.setGender(dto.getGender());
+        }
+
+        if (dto.getBirthday() != null) {
+            user.setBirthday(dto.getBirthday());
+        }
+
+        if (dto.getSignature() != null) {
+            user.setSignature(dto.getSignature());
+        }
+
+        if (dto.getAvatar() != null) {
+            user.setAvatar(dto.getAvatar());
+        }
+
+        // 只要提交了资料就标记为已完善（第一次完善资料）
+        boolean hasChanges = dto.getNickname() != null || dto.getGender() != null
+                || dto.getBirthday() != null || dto.getSignature() != null || dto.getAvatar() != null;
+        if (hasChanges && (user.getIsPerfect() == null || user.getIsPerfect() == 0)) {
+            user.setIsPerfect(1);
+        }
+
+        this.updateById(user);
+        log.info("用户 {} 资料已更新", user.getUsername());
+        return toProfileVO(user);
+    }
+
+    /** 构建资料 VO（排除敏感字段） */
+    private UserProfileVO toProfileVO(SysUser user) {
+        return UserProfileVO.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .realName(user.getRealName())
+                .nickname(user.getNickname())
+                .gender(user.getGender())
+                .birthday(user.getBirthday())
+                .signature(user.getSignature())
+                .avatar(user.getAvatar())
+                .phone(user.getPhone())
+                .email(user.getEmail())
+                .isPerfect(user.getIsPerfect())
+                .createTime(user.getCreateTime() != null ? user.getCreateTime().toString() : null)
+                .build();
     }
 }

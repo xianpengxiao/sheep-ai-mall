@@ -28,6 +28,11 @@ public interface ReviewService extends IService<ProductReview> {
     /** [管理员] 删除评价 */
     void removeReview(Long id);
 
+    /** [管理员] 分页查询全部评价（支持多维度筛选） */
+    Page<ReviewVO> pageAllReview(int pageNum, int pageSize, String keyword,
+                                  Integer rating, Integer status,
+                                  String startTime, String endTime);
+
     /** [用户] 删除自己的评价 */
     void deleteMyReview(Long id);
 

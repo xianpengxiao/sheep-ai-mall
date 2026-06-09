@@ -34,8 +34,8 @@ public interface MerchantService extends IService<Merchant> {
     /** 查询当前商家的店铺信息 */
     MerchantVO getMyShopInfo();
 
-    /** 修改店铺信息 */
-    MerchantVO updateMyShop(MerchantUpdateDTO dto);
+    /** 提交店铺信息修改（A类字段进入审核，B类字段直接生效） */
+    MerchantVO submitInfoChange(MerchantUpdateDTO dto);
 
     /** 新增商品（商家自己的商品） */
     SpuVO addGoods(SpuSaveDTO dto);
@@ -80,4 +80,12 @@ public interface MerchantService extends IService<Merchant> {
 
     /** 获取当前登录用户对应的已开通商家ID（商家后台专用） */
     Long getCurrentMerchantId();
+
+    // ========== 商家信息变更审核 ==========
+
+    /** 管理员：待审核的商家信息变更列表 */
+    Page<MerchantInfoChangeVO> pagePendingInfoChange(int pageNum, int pageSize);
+
+    /** 管理员：审核商家信息变更 */
+    void auditInfoChange(Long changeId, Integer auditStatus, String auditMsg);
 }

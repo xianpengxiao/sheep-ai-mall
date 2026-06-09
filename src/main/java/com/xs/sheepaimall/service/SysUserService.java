@@ -6,7 +6,9 @@ import com.xs.sheepaimall.dto.LoginDTO;
 import com.xs.sheepaimall.dto.RegisterDTO;
 import com.xs.sheepaimall.entity.SysRole;
 import com.xs.sheepaimall.entity.SysUser;
+import com.xs.sheepaimall.dto.UserProfileUpdateDTO;
 import com.xs.sheepaimall.vo.LoginVO;
+import com.xs.sheepaimall.vo.UserProfileVO;
 
 import java.util.List;
 
@@ -59,4 +61,12 @@ public interface SysUserService extends IService<SysUser> {
 
     /** 短信验证码登录（手机号需先通过验证码验证） */
     LoginVO smsLogin(String phone, String code);
+
+    // ========== 用户资料 ==========
+
+    /** 获取当前登录用户资料 */
+    UserProfileVO getProfile(Long userId);
+
+    /** 修改用户资料（昵称有敏感词校验） */
+    UserProfileVO updateProfile(Long userId, UserProfileUpdateDTO dto);
 }

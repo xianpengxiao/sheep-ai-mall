@@ -1,6 +1,7 @@
 package com.xs.sheepaimall.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.xs.sheepaimall.common.BizException;
 import com.xs.sheepaimall.common.R;
 import com.xs.sheepaimall.dto.SpuQueryDTO;
 import com.xs.sheepaimall.dto.SpuSaveDTO;
@@ -31,9 +32,13 @@ public class SpuController {
         return R.ok(spuService.pageQuery(dto));
     }
 
-    @Operation(summary = "查询SPU详情", description = "含SKU列表")
+    @Operation(summary = "查询SPU详情", description = "含SKU列表，仅返回审核通过的商品")
     @GetMapping("/{id}")
     public R<SpuVO> detail(@Parameter(description = "SPU ID") @PathVariable Long id) {
+        Spu spu = spuService.getById(id);
+        if (spu == null || spu.getAuditStatus() != 1) {
+            throw new BizException("商品不存在或未上架");
+        }
         return R.ok(spuService.getDetailById(id));
     }
 

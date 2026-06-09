@@ -44,6 +44,12 @@ public class Spu {
     @Schema(description = "状态：1=上架 0=下架")
     private Integer status;
 
+    @Schema(description = "审核状态 0待审核 1审核通过 2审核驳回")
+    private Integer auditStatus;
+
+    @Schema(description = "审核驳回原因")
+    private String auditMsg;
+
     @Schema(description = "销量")
     private Integer salesCount;
 

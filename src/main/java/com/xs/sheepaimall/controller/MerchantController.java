@@ -86,7 +86,7 @@ public class MerchantController {
     @PutMapping("/info")
     @RequirePermission("merchant:info:update")
     public R<MerchantVO> updateShop(@Valid @RequestBody MerchantUpdateDTO dto) {
-        return R.ok(merchantService.updateMyShop(dto));
+        return R.ok(merchantService.submitInfoChange(dto));
     }
 
     @Operation(summary = "新增商品")

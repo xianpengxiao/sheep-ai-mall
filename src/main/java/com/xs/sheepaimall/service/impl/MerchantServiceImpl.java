@@ -12,6 +12,7 @@ import com.xs.sheepaimall.common.ResultCode;
 import com.xs.sheepaimall.dto.*;
 import com.xs.sheepaimall.entity.*;
 import com.xs.sheepaimall.mapper.MerchantApplyMapper;
+import com.xs.sheepaimall.mapper.MerchantInfoChangeMapper;
 import com.xs.sheepaimall.mapper.MerchantMapper;
 import com.xs.sheepaimall.mapper.OrderInfoMapper;
 import com.xs.sheepaimall.mapper.SysUserRoleMapper;
@@ -22,6 +23,7 @@ import com.xs.sheepaimall.service.OrderItemService;
 import com.xs.sheepaimall.service.SkuService;
 import com.xs.sheepaimall.service.SpuService;
 import com.xs.sheepaimall.util.OssUtil;
+import com.xs.sheepaimall.util.SensitiveWordUtil;
 import com.xs.sheepaimall.vo.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -59,6 +61,9 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     private SkuService skuService;
 
     @Resource
+    private MerchantInfoChangeMapper merchantInfoChangeMapper;
+
+    @Resource
     private OrderItemService orderItemService;
 
     @Resource
@@ -69,6 +74,12 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
     @Resource
     private MerchantDsrService merchantDsrService;
+
+    @Resource
+    private SensitiveWordUtil sensitiveWordUtil;
+
+    @Resource
+    private com.xs.sheepaimall.service.CategoryService categoryService;
 
     // ==================== 买家端 ====================
 
@@ -103,6 +114,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         List<Spu> goods = spuService.list(new LambdaQueryWrapper<Spu>()
                 .eq(Spu::getMerchantId, id)
                 .eq(Spu::getStatus, 1)
+                .eq(Spu::getAuditStatus, 1)
                 .orderByDesc(Spu::getSalesCount));
         vo.setGoodsList(goods.stream().map(this::toSpuVO).collect(Collectors.toList()));
         return vo;
@@ -119,6 +131,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                 new LambdaQueryWrapper<Spu>()
                         .eq(Spu::getMerchantId, merchantId)
                         .eq(Spu::getStatus, 1)
+                        .eq(Spu::getAuditStatus, 1)
                         .orderByDesc(Spu::getSalesCount));
     }
 
@@ -182,14 +195,107 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public MerchantVO updateMyShop(MerchantUpdateDTO dto) {
+    public MerchantVO submitInfoChange(MerchantUpdateDTO dto) {
         Merchant merchant = getCurrentMerchant();
         // 记录旧值，用于后续删除 OSS 文件
         String oldLogo = merchant.getShopLogo();
         String oldLicense = merchant.getBusinessLicense();
-        BeanUtil.copyProperties(dto, merchant, "id", "userId", "status");
-        this.updateById(merchant);
-        log.info("商家信息已更新 merchantId={}", merchant.getId());
+
+        // ===== B类字段（展示类）：机审后直接生效 =====
+        boolean hasBChanges = false;
+        Merchant directUpdate = new Merchant();
+        directUpdate.setId(merchant.getId());
+
+        if (dto.getShopName() != null) {
+            // 敏感词检测
+            List<String> sw = sensitiveWordUtil.checkSensitive(dto.getShopName());
+            if (!sw.isEmpty()) {
+                throw new BizException("店铺名称包含敏感词：" + String.join(",", sw));
+            }
+            directUpdate.setShopName(dto.getShopName());
+            hasBChanges = true;
+        }
+        if (dto.getShopLogo() != null) {
+            directUpdate.setShopLogo(dto.getShopLogo());
+            hasBChanges = true;
+        }
+        if (dto.getShopDesc() != null) {
+            directUpdate.setShopDesc(dto.getShopDesc());
+            hasBChanges = true;
+        }
+        if (dto.getShopNotice() != null) {
+            directUpdate.setShopNotice(dto.getShopNotice());
+            hasBChanges = true;
+        }
+        if (dto.getBusinessHours() != null) {
+            directUpdate.setBusinessHours(dto.getBusinessHours());
+            hasBChanges = true;
+        }
+        if (dto.getAfterSaleInfo() != null) {
+            directUpdate.setAfterSaleInfo(dto.getAfterSaleInfo());
+            hasBChanges = true;
+        }
+
+        if (hasBChanges) {
+            this.updateById(directUpdate);
+            log.info("商家B类信息已直接更新 merchantId={}", merchant.getId());
+        }
+
+        // ===== A类字段（资质类）：需人工审核 =====
+        boolean hasAChanges = false;
+        MerchantInfoChange change = new MerchantInfoChange();
+        change.setMerchantId(merchant.getId());
+
+        if (dto.getBusinessLicense() != null) {
+            change.setBusinessLicense(dto.getBusinessLicense());
+            hasAChanges = true;
+        }
+        if (dto.getFoodLicense() != null) {
+            change.setFoodLicense(dto.getFoodLicense());
+            hasAChanges = true;
+        }
+        if (dto.getBusinessScope() != null) {
+            change.setBusinessScope(dto.getBusinessScope());
+            hasAChanges = true;
+        }
+        if (dto.getContactName() != null) {
+            change.setContactName(dto.getContactName());
+            hasAChanges = true;
+        }
+        if (dto.getContactPhone() != null) {
+            change.setContactPhone(dto.getContactPhone());
+            hasAChanges = true;
+        }
+        if (dto.getLegalPerson() != null) {
+            change.setLegalPerson(dto.getLegalPerson());
+            hasAChanges = true;
+        }
+        if (dto.getBusinessAddress() != null) {
+            change.setBusinessAddress(dto.getBusinessAddress());
+            hasAChanges = true;
+        }
+        if (dto.getVerifiedContact() != null) {
+            change.setVerifiedContact(dto.getVerifiedContact());
+            hasAChanges = true;
+        }
+
+        if (hasAChanges) {
+            // 标记变更字段
+            List<String> changed = new ArrayList<>();
+            if (dto.getBusinessLicense() != null) changed.add("businessLicense");
+            if (dto.getFoodLicense() != null) changed.add("foodLicense");
+            if (dto.getBusinessScope() != null) changed.add("businessScope");
+            if (dto.getContactName() != null) changed.add("contactName");
+            if (dto.getContactPhone() != null) changed.add("contactPhone");
+            if (dto.getLegalPerson() != null) changed.add("legalPerson");
+            if (dto.getBusinessAddress() != null) changed.add("businessAddress");
+            if (dto.getVerifiedContact() != null) changed.add("verifiedContact");
+            change.setChangedFields(JSONUtil.toJsonStr(changed));
+            change.setAuditStatus(0); // 待审核
+            merchantInfoChangeMapper.insert(change);
+            log.info("商家A类信息变更已提交审核 merchantId={}, changeId={}", merchant.getId(), change.getId());
+        }
+
         // 删除旧 OSS 文件
         if (oldLogo != null && dto.getShopLogo() != null && !oldLogo.equals(dto.getShopLogo())) {
             ossUtil.deleteByUrl(oldLogo);
@@ -197,7 +303,9 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         if (oldLicense != null && dto.getBusinessLicense() != null && !oldLicense.equals(dto.getBusinessLicense())) {
             ossUtil.deleteByUrl(oldLicense);
         }
-        return toSimpleVO(merchant);
+
+        Merchant updated = this.getById(merchant.getId());
+        return toSimpleVO(updated);
     }
 
     @Override
@@ -208,9 +316,22 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         BeanUtil.copyProperties(dto, spu);
         spu.setId(null);
         spu.setMerchantId(merchant.getId());
+        spu.setStatus(0); // 新增商品默认下架，审核通过后自动上架
+        spu.setAuditStatus(0); // 待审核
         if (dto.getImageList() != null) {
             spu.setImageList(JSONUtil.toJsonStr(dto.getImageList()));
         }
+
+        // 机审：检测敏感词/侵权/高风险类目，命中则标记
+        String categoryName = "";
+        try {
+            Category cat = categoryService.getById(spu.getCategoryId());
+            if (cat != null) categoryName = cat.getName();
+        } catch (Exception ignored) {}
+        if (sensitiveWordUtil.needsManualReview(spu.getName(), spu.getDescription(), spu.getBrand(), categoryName)) {
+            log.info("商品机审命中标记，需人工审核 merchantId={}, name={}", merchant.getId(), spu.getName());
+        }
+
         spuService.save(spu);
 
         if (dto.getSkuList() != null && !dto.getSkuList().isEmpty()) {
@@ -242,6 +363,8 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         BeanUtil.copyProperties(dto, spu);
         spu.setId(id);
         spu.setMerchantId(merchant.getId());
+        spu.setStatus(0); // 编辑后重新下架待审核
+        spu.setAuditStatus(0); // 重新进入审核
         if (dto.getImageList() != null) {
             spu.setImageList(JSONUtil.toJsonStr(dto.getImageList()));
         }
@@ -681,6 +804,82 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         this.updateById(merchant);
         log.info("商家营业状态切换 merchantId={}, newStatus={}", merchant.getId(), newStatus);
         return newStatus;
+    }
+
+    // ========== 商家信息变更审核 ==========
+
+    @Override
+    public Page<MerchantInfoChangeVO> pagePendingInfoChange(int pageNum, int pageSize) {
+        Page<MerchantInfoChange> page = merchantInfoChangeMapper.selectPage(
+                new Page<>(pageNum, pageSize),
+                new LambdaQueryWrapper<MerchantInfoChange>()
+                        .eq(MerchantInfoChange::getAuditStatus, 0)
+                        .orderByDesc(MerchantInfoChange::getCreateTime));
+
+        Page<MerchantInfoChangeVO> voPage = new Page<>(pageNum, pageSize, page.getTotal());
+        voPage.setRecords(page.getRecords().stream().map(this::toInfoChangeVO).collect(Collectors.toList()));
+        return voPage;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void auditInfoChange(Long changeId, Integer auditStatus, String auditMsg) {
+        MerchantInfoChange change = merchantInfoChangeMapper.selectById(changeId);
+        if (change == null) {
+            throw new BizException(ResultCode.NOT_FOUND.getCode(), "变更记录不存在");
+        }
+        if (change.getAuditStatus() != 0) {
+            throw new BizException("该变更已被审核，请勿重复操作");
+        }
+
+        if (auditStatus == 1) {
+            Merchant merchant = this.getById(change.getMerchantId());
+            if (merchant == null) {
+                throw new BizException("商家不存在");
+            }
+            Merchant update = new Merchant();
+            update.setId(merchant.getId());
+            boolean hasChange = false;
+            if (change.getBusinessLicense() != null)    { update.setBusinessLicense(change.getBusinessLicense()); hasChange = true; }
+            if (change.getFoodLicense() != null)         { update.setFoodLicense(change.getFoodLicense()); hasChange = true; }
+            if (change.getBusinessScope() != null)       { update.setBusinessScope(change.getBusinessScope()); hasChange = true; }
+            if (change.getContactName() != null)         { update.setContactName(change.getContactName()); hasChange = true; }
+            if (change.getContactPhone() != null)        { update.setContactPhone(change.getContactPhone()); hasChange = true; }
+            if (change.getLegalPerson() != null)         { update.setLegalPerson(change.getLegalPerson()); hasChange = true; }
+            if (change.getBusinessAddress() != null)     { update.setBusinessAddress(change.getBusinessAddress()); hasChange = true; }
+            if (change.getVerifiedContact() != null)     { update.setVerifiedContact(change.getVerifiedContact()); hasChange = true; }
+            if (hasChange) {
+                this.updateById(update);
+            }
+            change.setAuditStatus(1);
+            log.info("商家信息变更审核通过 merchantId={}, changeId={}", change.getMerchantId(), changeId);
+        } else if (auditStatus == 2) {
+            if (StrUtil.isBlank(auditMsg)) {
+                throw new BizException("审核驳回时必须填写驳回原因");
+            }
+            change.setAuditStatus(2);
+            change.setAuditMsg(auditMsg);
+            log.info("商家信息变更审核驳回 merchantId={}, changeId={}, reason={}", change.getMerchantId(), changeId, auditMsg);
+        } else {
+            throw new BizException("审核状态值错误");
+        }
+
+        change.setAuditUserId(UserContext.getUserId());
+        change.setAuditTime(LocalDateTime.now());
+        merchantInfoChangeMapper.updateById(change);
+    }
+
+    /** MerchantInfoChange → VO */
+    private MerchantInfoChangeVO toInfoChangeVO(MerchantInfoChange change) {
+        MerchantInfoChangeVO vo = new MerchantInfoChangeVO();
+        BeanUtil.copyProperties(change, vo);
+        Merchant merchant = this.getById(change.getMerchantId());
+        if (merchant != null) {
+            vo.setShopName(merchant.getShopName());
+        }
+        Map<Integer, String> statusMap = Map.of(0, "待审核", 1, "已通过", 2, "已驳回");
+        vo.setAuditStatusText(statusMap.getOrDefault(change.getAuditStatus(), "未知"));
+        return vo;
     }
 
     // ==================== 内部方法 ====================

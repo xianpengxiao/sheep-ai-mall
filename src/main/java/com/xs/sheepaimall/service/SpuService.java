@@ -31,4 +31,10 @@ public interface SpuService extends IService<Spu> {
     Page<Spu> pageHotProducts(int pageNum, int pageSize);
 
     boolean removeById(Long id);
+
+    /** 审核商品（通过/驳回） */
+    void auditSpu(Long spuId, Integer auditStatus, String auditMsg);
+
+    /** 待审核商品分页（管理员） */
+    Page<Spu> pagePendingAudit(int pageNum, int pageSize);
 }

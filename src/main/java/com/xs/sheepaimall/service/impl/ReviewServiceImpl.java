@@ -175,6 +175,45 @@ public class ReviewServiceImpl extends ServiceImpl<ProductReviewMapper, ProductR
     }
 
     @Override
+    public Page<ReviewVO> pageAllReview(int pageNum, int pageSize, String keyword,
+                                         Integer rating, Integer status,
+                                         String startTime, String endTime) {
+        LambdaQueryWrapper<ProductReview> wrapper = new LambdaQueryWrapper<ProductReview>()
+                .eq(rating != null, ProductReview::getRating, rating)
+                .eq(status != null, ProductReview::getStatus, status)
+                .ge(StrUtil.isNotBlank(startTime), ProductReview::getCreateTime, startTime)
+                .le(StrUtil.isNotBlank(endTime), ProductReview::getCreateTime, endTime)
+                .orderByDesc(ProductReview::getCreateTime);
+
+        // keyword 同时匹配评价内容 / 商品名 / 用户名
+        if (StrUtil.isNotBlank(keyword)) {
+            List<Long> matchedSpuIds = spuService.listObjs(
+                    new LambdaQueryWrapper<Spu>()
+                            .like(Spu::getName, keyword)
+                            .select(Spu::getId),
+                    o -> (Long) o);
+            List<Long> matchedUserIds = sysUserService.listObjs(
+                    new LambdaQueryWrapper<SysUser>()
+                            .like(SysUser::getUsername, keyword)
+                            .select(SysUser::getId),
+                    o -> (Long) o);
+
+            wrapper.and(w -> {
+                w.like(ProductReview::getContent, keyword);
+                if (!matchedSpuIds.isEmpty()) {
+                    w.or().in(ProductReview::getSpuId, matchedSpuIds);
+                }
+                if (!matchedUserIds.isEmpty()) {
+                    w.or().in(ProductReview::getUserId, matchedUserIds);
+                }
+            });
+        }
+
+        Page<ProductReview> page = this.page(new Page<>(pageNum, pageSize), wrapper);
+        return toReviewVOPage(page);
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void removeReview(Long id) {
         ProductReview review = this.getById(id);

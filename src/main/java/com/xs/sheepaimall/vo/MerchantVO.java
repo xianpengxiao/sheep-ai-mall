@@ -23,8 +23,23 @@ public class MerchantVO {
     @Schema(description = "店铺logo")
     private String shopLogo;
 
+    @Schema(description = "店铺简介")
+    private String shopDesc;
+
+    @Schema(description = "店铺公告")
+    private String shopNotice;
+
+    @Schema(description = "营业时间")
+    private String businessHours;
+
+    @Schema(description = "售后说明")
+    private String afterSaleInfo;
+
     @Schema(description = "营业执照图片URL")
     private String businessLicense;
+
+    @Schema(description = "食品经营许可证")
+    private String foodLicense;
 
     @Schema(description = "经营范围")
     private String businessScope;
@@ -34,6 +49,15 @@ public class MerchantVO {
 
     @Schema(description = "联系电话")
     private String contactPhone;
+
+    @Schema(description = "法人信息")
+    private String legalPerson;
+
+    @Schema(description = "经营地址")
+    private String businessAddress;
+
+    @Schema(description = "实名联系方式")
+    private String verifiedContact;
 
     @Schema(description = "状态 0待审核 1已开通 2已关闭")
     private Integer status;

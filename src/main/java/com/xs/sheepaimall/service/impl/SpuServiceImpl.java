@@ -68,7 +68,8 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
         LambdaQueryWrapper<Spu> wrapper = new LambdaQueryWrapper<Spu>()
                 .eq(dto.getCategoryId() != null, Spu::getCategoryId, dto.getCategoryId())
                 .like(StrUtil.isNotBlank(dto.getKeyword()), Spu::getName, dto.getKeyword())
-                .eq(dto.getStatus() != null, Spu::getStatus, dto.getStatus());
+                .eq(dto.getStatus() != null, Spu::getStatus, dto.getStatus())
+                .eq(Spu::getAuditStatus, 1); // 公开查询只显示审核通过的商品
 
         if ("sales_count".equals(dto.getOrderBy())) {
             wrapper.orderByDesc(Spu::getSalesCount);
@@ -201,6 +202,7 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
                             new Page<>(pageNum, pageSize),
                             new LambdaQueryWrapper<Spu>()
                                     .eq(Spu::getStatus, 1)
+                                    .eq(Spu::getAuditStatus, 1)
                                     .orderByDesc(Spu::getSalesCount));
                     return page.getRecords().isEmpty() ? null : JSONUtil.toJsonStr(page);
                 },
@@ -272,6 +274,48 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
         cacheHelper.evictSpuDetail(id);
         cacheHelper.evictSpuHotPage();
         return ok;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void auditSpu(Long spuId, Integer auditStatus, String auditMsg) {
+        Spu spu = this.getById(spuId);
+        if (spu == null) {
+            throw new BizException(ResultCode.NOT_FOUND.getCode(), "商品不存在");
+        }
+        if (spu.getAuditStatus() != 0) {
+            throw new BizException("该商品已被审核，请勿重复操作");
+        }
+        Spu update = new Spu();
+        update.setId(spuId);
+        update.setAuditStatus(auditStatus);
+        if (auditStatus == 1) {
+            // 审核通过 → 自动上架
+            update.setStatus(1);
+            update.setAuditMsg("");
+        } else if (auditStatus == 2) {
+            // 审核驳回
+            if (StrUtil.isBlank(auditMsg)) {
+                throw new BizException("审核驳回时必须填写驳回原因");
+            }
+            update.setStatus(0);
+            update.setAuditMsg(auditMsg);
+        } else {
+            throw new BizException("审核状态值错误");
+        }
+        this.updateById(update);
+
+        cacheHelper.evictSpuDetail(spuId);
+        cacheHelper.evictSpuHotPage();
+    }
+
+    @Override
+    public Page<Spu> pagePendingAudit(int pageNum, int pageSize) {
+        return this.page(
+                new Page<>(pageNum, pageSize),
+                new LambdaQueryWrapper<Spu>()
+                        .eq(Spu::getAuditStatus, 0)
+                        .orderByDesc(Spu::getCreateTime));
     }
 
     /** 重写逻辑删除，同时清除缓存 */
