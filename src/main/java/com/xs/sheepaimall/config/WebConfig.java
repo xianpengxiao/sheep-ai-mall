@@ -27,6 +27,8 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/auth/send-code",           // 发送短信验证码
                         "/api/auth/verify-code",         // 校验短信验证码
                         "/api/auth/check-phone",         // 检查手机号是否已注册
+                        "/api/auth/sms-login",           // 短信验证码登录
+                        "/api/auth/send-login-code",     // 发送登录短信验证码
                         "/api/payment/notify",           // 微信支付回调（由微信服务器调用，无 JWT）
                         "/api/category/tree",            // 分类树（游客可浏览）
                         "/api/category/children/**",     // 子分类（游客可浏览）

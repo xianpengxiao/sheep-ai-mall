@@ -48,9 +48,15 @@ public interface SysUserService extends IService<SysUser> {
     /** 检查手机号是否已注册 */
     boolean checkPhoneExists(String phone);
 
-    /** 发送短信验证码 */
+    /** 发送短信验证码（注册用，手机号不能已注册） */
     void sendVerifyCode(String phone);
+
+    /** 发送短信验证码（登录用，手机号必须已注册） */
+    void sendLoginCode(String phone);
 
     /** 校验短信验证码 */
     boolean verifyCode(String phone, String code);
+
+    /** 短信验证码登录（手机号需先通过验证码验证） */
+    LoginVO smsLogin(String phone, String code);
 }

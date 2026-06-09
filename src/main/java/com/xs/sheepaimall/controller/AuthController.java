@@ -49,6 +49,19 @@ public class AuthController {
         return R.ok();
     }
 
+    @Operation(summary = "短信验证码登录", description = "手机号需先通过验证码验证，验证通过后直接登录返回 JWT Token")
+    @PostMapping("/sms-login")
+    public R<LoginVO> smsLogin(@Valid @RequestBody VerifyCodeDTO dto) {
+        return R.ok(sysUserService.smsLogin(dto.getPhone(), dto.getCode()));
+    }
+
+    @Operation(summary = "发送短信验证码（登录用）", description = "校验手机号已注册后发送验证码")
+    @PostMapping("/send-login-code")
+    public R<String> sendLoginCode(@RequestParam String phone) {
+        sysUserService.sendLoginCode(phone);
+        return R.ok("验证码已发送");
+    }
+
     @Operation(summary = "检查手机号是否已注册")
     @GetMapping("/check-phone")
     public R<Boolean> checkPhone(@RequestParam String phone) {

@@ -305,6 +305,29 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     }
 
     @Override
+    public void sendLoginCode(String phone) {
+        // 校验手机号格式
+        if (phone == null || !phone.matches("^1[3-9]\\d{9}$")) {
+            throw new BizException("手机号格式不正确");
+        }
+        // 校验手机号必须已注册
+        if (!checkPhoneExists(phone)) {
+            throw new BizException("该手机号未注册，请先注册");
+        }
+        // 60秒内不能重复发送
+        String limitKey = CacheConstants.SMS_LIMIT_PREFIX + phone;
+        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(limitKey))) {
+            throw new BizException("验证码已发送，请60秒后重试");
+        }
+        String code = String.format("%06d", (int) (Math.random() * 1000000));
+        String codeKey = CacheConstants.SMS_CODE_PREFIX + phone;
+        stringRedisTemplate.opsForValue().set(codeKey, code, java.time.Duration.ofSeconds(CacheConstants.SMS_CODE_TTL));
+        stringRedisTemplate.opsForValue().set(limitKey, "1", java.time.Duration.ofSeconds(60));
+
+        smsUtil.sendCode(phone, code);
+    }
+
+    @Override
     public boolean verifyCode(String phone, String code) {
         if (phone == null || code == null) return false;
         String codeKey = CacheConstants.SMS_CODE_PREFIX + phone;
@@ -318,6 +341,56 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
             stringRedisTemplate.opsForValue().set(verifiedKey, "1", java.time.Duration.ofMinutes(10));
         }
         return valid;
+    }
+
+    @Override
+    public LoginVO smsLogin(String phone, String code) {
+        // 校验验证码
+        String codeKey = CacheConstants.SMS_CODE_PREFIX + phone;
+        String saved = stringRedisTemplate.opsForValue().get(codeKey);
+        if (saved == null || !saved.equals(code)) {
+            throw new BizException("验证码错误或已过期");
+        }
+        // 验证通过，删除验证码
+        stringRedisTemplate.delete(codeKey);
+
+        // 查找用户
+        SysUser user = this.getOne(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getPhone, phone));
+        if (user == null) {
+            throw new BizException("该手机号未注册，请先注册");
+        }
+        if (user.getStatus() == 0) {
+            throw new AccountStatusException("账号已被禁用，请联系管理员");
+        }
+        if (user.getStatus() == 2) {
+            throw new AccountStatusException("账号已被锁定，请联系管理员");
+        }
+
+        // 获取角色和权限
+        List<String> roles = sysUserRoleMapper.selectRoleCodesByUserId(user.getId());
+        roles = roles != null ? roles : Collections.emptyList();
+        List<String> permissions = sysRolePermissionMapper.selectPermCodesByUserId(user.getId());
+        permissions = permissions != null ? permissions : Collections.emptyList();
+
+        log.info("用户 {} 短信验证码登录成功，角色：{}", user.getUsername(), roles);
+
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), permissions, roles);
+
+        user.setLastLogin(LocalDateTime.now());
+        this.updateById(user);
+
+        return LoginVO.builder()
+                .accessToken(token)
+                .tokenType("Bearer")
+                .expiresIn(jwtExpiration)
+                .userId(user.getId())
+                .username(user.getUsername())
+                .realName(user.getRealName() != null ? user.getRealName() : "")
+                .avatar(user.getAvatar() != null ? user.getAvatar() : "")
+                .roles(roles)
+                .permissions(permissions)
+                .build();
     }
 
     /** 使用 BCrypt 加密明文密码（供初始化 / 新增用户使用） */
