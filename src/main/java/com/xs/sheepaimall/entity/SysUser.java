@@ -27,6 +27,9 @@ public class SysUser {
     @Schema(description = "真实姓名")
     private String realName;
 
+    @Schema(description = "身份证号")
+    private String idCard;
+
     @Schema(description = "昵称")
     private String nickname;
 

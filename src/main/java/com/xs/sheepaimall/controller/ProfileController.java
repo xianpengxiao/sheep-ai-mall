@@ -31,7 +31,7 @@ public class ProfileController {
         return R.ok(sysUserService.getProfile(userId));
     }
 
-    @Operation(summary = "修改用户资料", description = "修改昵称/性别/生日/签名/头像，昵称含敏感词校验，首次完善资料自动标记 is_perfect=1")
+    @Operation(summary = "修改用户资料", description = "修改昵称/性别/生日/签名，昵称含敏感词校验，首次完善资料自动标记 is_perfect=1")
     @PutMapping
     public R<UserProfileVO> updateProfile(@Valid @RequestBody UserProfileUpdateDTO dto) {
         Long userId = UserContext.getUserId();

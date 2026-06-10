@@ -60,4 +60,18 @@ public final class CacheConstants {
 
     /** 验证码有效期 5 分钟 */
     public static final long SMS_CODE_TTL = 5 * 60;
+
+    // ============ 邮箱验证码 ============
+
+    /** 邮箱验证码 Redis key 前缀 */
+    public static final String EMAIL_CODE_PREFIX = "email::code::";
+
+    /** 邮箱验证码发送间隔限制 Redis key 前缀 */
+    public static final String EMAIL_LIMIT_PREFIX = "email::limit::";
+
+    /** 已验证邮箱标记 Redis key 前缀 */
+    public static final String EMAIL_VERIFIED_PREFIX = "email::verified::";
+
+    /** 邮箱验证码有效期 10 分钟 */
+    public static final long EMAIL_CODE_TTL = 10 * 60;
 }

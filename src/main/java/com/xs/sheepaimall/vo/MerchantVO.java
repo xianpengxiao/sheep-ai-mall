@@ -4,7 +4,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 /** 商家信息返回 */
 @Data
@@ -79,9 +78,6 @@ public class MerchantVO {
 
     @Schema(description = "评价数")
     private Integer dsrCount;
-
-    @Schema(description = "店铺在售商品列表（商家详情时返回）")
-    private List<SpuVO> goodsList;
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;

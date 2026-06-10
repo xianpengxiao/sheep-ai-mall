@@ -27,7 +27,4 @@ public class UserProfileUpdateDTO {
     @Schema(description = "个性签名（最多200字）")
     @Size(max = 200, message = "个性签名最多200字")
     private String signature;
-
-    @Schema(description = "头像URL（可复用上传接口获取后填入）")
-    private String avatar;
 }

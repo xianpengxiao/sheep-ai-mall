@@ -6,9 +6,10 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.xs.sheepaimall.common.AccountStatusException;
 import com.xs.sheepaimall.common.BizException;
 import com.xs.sheepaimall.common.CacheConstants;
-import com.xs.sheepaimall.dto.LoginDTO;
-import com.xs.sheepaimall.dto.RegisterDTO;
-import com.xs.sheepaimall.dto.UserProfileUpdateDTO;
+import com.xs.sheepaimall.dto.*;
+import com.xs.sheepaimall.util.DesensitizeUtil;
+import com.xs.sheepaimall.util.EmailUtil;
+import com.xs.sheepaimall.util.IdCardVerifyUtil;
 import com.xs.sheepaimall.entity.SysRole;
 import com.xs.sheepaimall.entity.SysUser;
 import com.xs.sheepaimall.entity.SysUserRole;
@@ -20,6 +21,7 @@ import com.xs.sheepaimall.security.AuthInterceptor;
 import com.xs.sheepaimall.security.JwtUtil;
 import com.xs.sheepaimall.service.SysUserService;
 import com.xs.sheepaimall.vo.LoginVO;
+import com.xs.sheepaimall.vo.SecurityProfileVO;
 import com.xs.sheepaimall.vo.UserProfileVO;
 import com.xs.sheepaimall.util.SensitiveWordUtil;
 import com.xs.sheepaimall.util.SmsUtil;
@@ -66,6 +68,12 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 
     @Resource
     private SmsUtil smsUtil;
+
+    @Resource
+    private EmailUtil emailUtil;
+
+    @Resource
+    private IdCardVerifyUtil idCardVerifyUtil;
 
     @Resource
     private SensitiveWordUtil sensitiveWordUtil;
@@ -115,7 +123,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
                 .expiresIn(jwtExpiration)
                 .userId(user.getId())
                 .username(user.getUsername())
-                .realName(user.getRealName() != null ? user.getRealName() : "")
+                .realName(DesensitizeUtil.name(user.getRealName()))
                 .avatar(user.getAvatar() != null ? user.getAvatar() : "")
                 .roles(roles)
                 .permissions(permissions)
@@ -239,6 +247,20 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
             user.setPassword(null);
         }
         return page;
+    }
+
+    @Override
+    public void updateStatus(Long userId, Integer status) {
+        SysUser user = this.getById(userId);
+        if (user == null) {
+            throw new BizException("用户不存在");
+        }
+        if (status != 0 && status != 1) {
+            throw new BizException("状态值不正确：0=禁用 1=正常");
+        }
+        user.setStatus(status);
+        this.updateById(user);
+        log.info("管理员操作：用户 {} 状态变更为 {}", userId, status);
     }
 
     @Override
@@ -392,7 +414,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
                 .expiresIn(jwtExpiration)
                 .userId(user.getId())
                 .username(user.getUsername())
-                .realName(user.getRealName() != null ? user.getRealName() : "")
+                .realName(DesensitizeUtil.name(user.getRealName()))
                 .avatar(user.getAvatar() != null ? user.getAvatar() : "")
                 .roles(roles)
                 .permissions(permissions)
@@ -402,6 +424,182 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     /** 使用 BCrypt 加密明文密码（供初始化 / 新增用户使用） */
     public static String encodePassword(String rawPassword) {
         return PASSWORD_ENCODER.encode(rawPassword);
+    }
+
+    @Override
+    public SecurityProfileVO getSecurityProfile(Long userId) {
+        SysUser user = this.getById(userId);
+        if (user == null) {
+            throw new BizException("用户不存在");
+        }
+        boolean hasRealName = user.getIdCard() != null && !user.getIdCard().isBlank();
+        boolean hasPhone = user.getPhone() != null && !user.getPhone().isBlank();
+        boolean hasEmail = user.getEmail() != null && !user.getEmail().isBlank();
+
+        return SecurityProfileVO.builder()
+                .realNameAuth(hasRealName)
+                .realName(hasRealName ? DesensitizeUtil.name(user.getRealName()) : null)
+                .idCard(hasRealName ? DesensitizeUtil.idCard(user.getIdCard()) : null)
+                .phone(hasPhone ? DesensitizeUtil.phone(user.getPhone()) : null)
+                .email(hasEmail ? DesensitizeUtil.email(user.getEmail()) : null)
+                .phoneBound(hasPhone)
+                .emailBound(hasEmail)
+                .profileComplete(hasRealName && hasPhone && hasEmail)
+                .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitRealName(Long userId, RealNameAuthDTO dto) {
+        SysUser user = this.getById(userId);
+        if (user == null) {
+            throw new BizException("用户不存在");
+        }
+        if (user.getIdCard() != null && !user.getIdCard().isBlank()) {
+            throw new BizException("已实名认证，不可重复提交");
+        }
+
+        // 调用公安接口校验姓名+身份证是否匹配（API为空时跳过）
+        if (!idCardVerifyUtil.verify(dto.getRealName(), dto.getIdCard())) {
+            throw new BizException("姓名与身份证号不匹配");
+        }
+
+        user.setRealName(dto.getRealName());
+        user.setIdCard(dto.getIdCard());
+
+        checkAndUpdatePerfect(user);
+        this.updateById(user);
+        log.info("用户 {} 实名认证成功", userId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void bindPhone(Long userId, BindPhoneDTO dto) {
+        SysUser user = this.getById(userId);
+        if (user == null) {
+            throw new BizException("用户不存在");
+        }
+
+        // 已绑定手机号 → 校验原手机验证码（验证本人操作）
+        boolean hasOldPhone = user.getPhone() != null && !user.getPhone().isBlank();
+        if (hasOldPhone) {
+            if (dto.getOldCode() == null || dto.getOldCode().isBlank()) {
+                throw new BizException("原手机号验证码不能为空");
+            }
+            String oldCodeKey = CacheConstants.SMS_CODE_PREFIX + user.getPhone();
+            String oldSaved = stringRedisTemplate.opsForValue().get(oldCodeKey);
+            if (oldSaved == null || !oldSaved.equals(dto.getOldCode())) {
+                throw new BizException("原手机号验证码错误或已过期");
+            }
+            stringRedisTemplate.delete(oldCodeKey);
+        }
+
+        // 校验新手机号验证码
+        String codeKey = CacheConstants.SMS_CODE_PREFIX + dto.getPhone();
+        String saved = stringRedisTemplate.opsForValue().get(codeKey);
+        if (saved == null || !saved.equals(dto.getCode())) {
+            throw new BizException("新手机号验证码错误或已过期");
+        }
+        stringRedisTemplate.delete(codeKey);
+
+        // 新手机号唯一性校验
+        SysUser exists = this.lambdaQuery().eq(SysUser::getPhone, dto.getPhone()).one();
+        if (exists != null && !exists.getId().equals(userId)) {
+            throw new BizException("该手机号已被其他账号绑定");
+        }
+
+        user.setPhone(dto.getPhone());
+        checkAndUpdatePerfect(user);
+        this.updateById(user);
+        log.info("用户 {} 绑定手机号成功", userId);
+    }
+
+    @Override
+    public void sendOldPhoneCode(Long userId) {
+        SysUser user = this.getById(userId);
+        if (user == null || user.getPhone() == null || user.getPhone().isBlank()) {
+            throw new BizException("当前账号未绑定手机号");
+        }
+        // 复用登录验证码发送逻辑（手机号必须已注册）
+        sendLoginCode(user.getPhone());
+    }
+
+    @Override
+    public void sendOldEmailCode(Long userId) {
+        SysUser user = this.getById(userId);
+        if (user == null || user.getEmail() == null || user.getEmail().isBlank()) {
+            throw new BizException("当前账号未绑定邮箱");
+        }
+        // 向已绑定的邮箱发送验证码
+        sendEmailCode(user.getEmail());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void bindEmail(Long userId, BindEmailDTO dto) {
+        SysUser user = this.getById(userId);
+        if (user == null) {
+            throw new BizException("用户不存在");
+        }
+
+        // 已绑定邮箱 → 校验原邮箱验证码（验证本人操作）
+        boolean hasOldEmail = user.getEmail() != null && !user.getEmail().isBlank();
+        if (hasOldEmail) {
+            if (dto.getOldCode() == null || dto.getOldCode().isBlank()) {
+                throw new BizException("原邮箱验证码不能为空");
+            }
+            String oldCodeKey = CacheConstants.EMAIL_CODE_PREFIX + user.getEmail();
+            String oldSaved = stringRedisTemplate.opsForValue().get(oldCodeKey);
+            if (oldSaved == null || !oldSaved.equals(dto.getOldCode())) {
+                throw new BizException("原邮箱验证码错误或已过期");
+            }
+            stringRedisTemplate.delete(oldCodeKey);
+        }
+
+        // 校验新邮箱验证码
+        String codeKey = CacheConstants.EMAIL_CODE_PREFIX + dto.getEmail();
+        String saved = stringRedisTemplate.opsForValue().get(codeKey);
+        if (saved == null || !saved.equals(dto.getCode())) {
+            throw new BizException("新邮箱验证码错误或已过期");
+        }
+        stringRedisTemplate.delete(codeKey);
+
+        // 新邮箱唯一性校验
+        SysUser exists = this.lambdaQuery().eq(SysUser::getEmail, dto.getEmail()).one();
+        if (exists != null && !exists.getId().equals(userId)) {
+            throw new BizException("该邮箱已被其他账号绑定");
+        }
+
+        user.setEmail(dto.getEmail());
+        checkAndUpdatePerfect(user);
+        this.updateById(user);
+        log.info("用户 {} 绑定邮箱成功", userId);
+    }
+
+    @Override
+    public void sendEmailCode(String email) {
+        String limitKey = CacheConstants.EMAIL_LIMIT_PREFIX + email;
+        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(limitKey))) {
+            throw new BizException("验证码已发送，请60秒后重试");
+        }
+        String code = String.format("%06d", (int) (Math.random() * 1000000));
+        String codeKey = CacheConstants.EMAIL_CODE_PREFIX + email;
+        stringRedisTemplate.opsForValue().set(codeKey, code,
+                java.time.Duration.ofSeconds(CacheConstants.EMAIL_CODE_TTL));
+        stringRedisTemplate.opsForValue().set(limitKey, "1", java.time.Duration.ofSeconds(60));
+
+        // 真实发送邮件
+        emailUtil.sendCode(email, code);
+    }
+
+    /** 检查是否满足完善条件（实名+手机+邮箱），满足则标记 is_perfect=1 */
+    private void checkAndUpdatePerfect(SysUser user) {
+        boolean hasRealName = user.getIdCard() != null && !user.getIdCard().isBlank();
+        boolean hasPhone = user.getPhone() != null && !user.getPhone().isBlank();
+        boolean hasEmail = user.getEmail() != null && !user.getEmail().isBlank();
+        if (hasRealName && hasPhone && hasEmail) {
+            user.setIsPerfect(1);
+        }
     }
 
     @Override
@@ -419,6 +617,11 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         SysUser user = this.getById(userId);
         if (user == null) {
             throw new BizException("用户不存在");
+        }
+
+        // 昵称和性别必须同时上传
+        if ((dto.getNickname() == null) != (dto.getGender() == null)) {
+            throw new BizException("昵称和性别必须同时上传");
         }
 
         // 昵称敏感词校验
@@ -446,17 +649,6 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
             user.setSignature(dto.getSignature());
         }
 
-        if (dto.getAvatar() != null) {
-            user.setAvatar(dto.getAvatar());
-        }
-
-        // 只要提交了资料就标记为已完善（第一次完善资料）
-        boolean hasChanges = dto.getNickname() != null || dto.getGender() != null
-                || dto.getBirthday() != null || dto.getSignature() != null || dto.getAvatar() != null;
-        if (hasChanges && (user.getIsPerfect() == null || user.getIsPerfect() == 0)) {
-            user.setIsPerfect(1);
-        }
-
         this.updateById(user);
         log.info("用户 {} 资料已更新", user.getUsername());
         return toProfileVO(user);
@@ -467,7 +659,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         return UserProfileVO.builder()
                 .id(user.getId())
                 .username(user.getUsername())
-                .realName(user.getRealName())
+                .realName(DesensitizeUtil.name(user.getRealName()))
                 .nickname(user.getNickname())
                 .gender(user.getGender())
                 .birthday(user.getBirthday())

@@ -109,15 +109,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         if (merchant == null) {
             throw new BizException(ResultCode.NOT_FOUND.getCode(), "商家不存在");
         }
-        MerchantVO vo = toSimpleVO(merchant);
-
-        List<Spu> goods = spuService.list(new LambdaQueryWrapper<Spu>()
-                .eq(Spu::getMerchantId, id)
-                .eq(Spu::getStatus, 1)
-                .eq(Spu::getAuditStatus, 1)
-                .orderByDesc(Spu::getSalesCount));
-        vo.setGoodsList(goods.stream().map(this::toSpuVO).collect(Collectors.toList()));
-        return vo;
+        return toSimpleVO(merchant);
     }
 
     @Override

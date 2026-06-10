@@ -12,7 +12,7 @@ SheepAIMall — Spring Boot 3.3.6 / Java 17 / Maven 智能电商商品服务。�
 ./mvnw compile              # 编译
 ./mvnw test                 # 运行全部测试
 ./mvnw test -Dtest=XXX      # 运行单个测试类
-./mvnw spring-boot:run      # 启动应用（端口 8080）
+./mvnv spring-boot:run      # 启动应用（端口 8080，MySQL/Redis/RabbitMQ/ES 需本地启动）
 ./mvnw package              # 打包
 ```
 
@@ -21,141 +21,156 @@ SheepAIMall — Spring Boot 3.3.6 / Java 17 / Maven 智能电商商品服务。�
 | 组件 | 用途 |
 |------|------|
 | Spring Boot 3.3.6 | 基础框架 |
-| MyBatis-Plus 3.5.12 | ORM + 分页（雪花ID主键） |
+| MyBatis-Plus 3.5.12 | ORM + 分页（雪花ID主键，全局 ASSIGN_ID） |
 | MySQL | 数据库 (sheep_ai_mall) |
-| Redis | 缓存 + 库存锁定状态追踪 + 幂等去重 |
-| RabbitMQ (spring-boot-starter-amqp) | 库存锁定/释放异步消息 |
+| Redis | 缓存 + JWT黑名单 + 库存锁定追踪 + 幂等去重 |
+| RabbitMQ | 库存锁定/释放异步消息 + DLX死信重试 |
 | Elasticsearch | 商品全文检索 |
 | Spring AI (DeepSeek) | AI 自动生成商品文案 |
 | Knife4j 4.5.0 | API 文档 (http://localhost:8080/swagger-ui.html) |
-| 微信支付 SDK (wechatpay-java 0.2.12) | JSAPI 支付 |
+| 微信支付 SDK | JSAPI 支付 |
 | Hutool 5.8.37 | 通用工具集 |
+| Aliyun OSS SDK | 图片文件存储（头像/商品图/资质图） |
+| jjwt 0.12.6 | JWT Token 签发与验证 |
+| Spring Security Crypto | 仅密码 BCrypt 加密（不含安全框架） |
 
 ## 配置体系
 
-配置文件采用占位符分层模式：
-
-- `application.yml` — Spring Boot 标准配置，值引用 `${sheep.*}` 占位符
-- `application-dev.yml` — 开发环境实际值，定义 `sheep.*` 属性（MySQL/Redis/ES/RabbitMQ/DeepSeek API Key/微信支付/订单支付超时）
-
-外部依赖默认均为 `localhost` 标准端口，密码 `123456`（MySQL/Redis）。RabbitMQ 用 `guest/guest`。
+- `application.yml` — 标准配置，值引用 `${sheep.*}` 或 `${sky.alioss.*}` 占位符
+- `application-dev.yml` — 开发环境实际值，定义所有 `sheep.*` 和 `alioss.*` 属性
 
 ### 关键配置项
 
 | 配置 | 位置 | 说明 |
 |------|------|------|
-| `sheep.mall.order.pay-timeout-minutes` | application-dev.yml | 支付超时分钟数，默认15，超时自动取消 |
-| `wechat.pay.enabled` | application.yml | 微信支付开关，默认 false（开发环境不加载微信SDK Bean） |
-| `spring.ai.openai.*` | application.yml | 实际对接 DeepSeek API（base-url指向 api.deepseek.com） |
-| `spring.rabbitmq.publisher-confirm-type` | application.yml | 生产者确认模式：correlated |
-| `spring.rabbitmq.listener.simple.acknowledge-mode` | application.yml | 消费者确认模式：manual |
+| `alioss.endpoint/access-key-id/...` | application-dev.yml | 阿里云 OSS，用于图片文件存储 |
+| `sheep.jwt.secret/expiration` | application-dev.yml | JWT 签名密钥（256位）和过期时间（默认2h） |
+| `sheep.mall.order.pay-timeout-minutes` | application-dev.yml | 支付超时分钟数，默认15 |
+| `wechat.pay.enabled` | application.yml | 微信支付开关，默认 false |
+| `spring.ai.openai.*` | application.yml | 实际对接 DeepSeek API |
 
-## 包结构与核心模块
+## 包结构
 
 ```
 com.xs.sheepaimall
 ├── controller/     → 接口层，统一返回 R<T>
-├── service/        → 业务接口
-│   └── impl/       → 业务实现（OrderServiceImpl 是最复杂的）
-├── mapper/         → MyBatis-Plus BaseMapper（@MapperScan 自动扫描）
-├── entity/         → 数据库实体（@TableName + ASSIGN_ID 雪花主键）
-├── dto/            → 请求/消息 DTO（含 StockDeductMessage MQ 消息体）
-├── vo/             → 响应 VO（含 statusText 等冗余字段）
-├── common/         → R、ResultCode、BizException、CacheHelper、RabbitMQConstants
-├── config/         → 各类 @Configuration（含 RabbitMQ 队列/交换机定义）
+├── service/impl/   → 业务逻辑
+├── mapper/         → MyBatis-Plus BaseMapper
+├── entity/         → 数据库实体（@TableName + @TableId ASSIGN_ID）
+├── dto/            → 请求 DTO
+├── vo/             → 响应 VO
+├── security/       → JWT 认证 (AuthInterceptor) + 权限 (RequirePermission) + UserContext(ThreadLocal)
+├── util/           → 工具类（OssUtil 阿里云 OSS 上传）
+├── common/         → R, ResultCode, BizException, CacheHelper, RabbitMQConstants
+├── config/         → 各类 @Configuration（RabbitMQ、AliOssProperties、OssConfiguration、DataInitRunner 等）
 ├── consumer/       → RabbitMQ @RabbitListener 消费者
 ├── scheduler/      → @Scheduled 定时任务
 └── repository/     → Spring Data ES Repository
 ```
 
-## 核心架构：库存锁定/释放（RabbitMQ 异步模式）
+## 安全与权限（RBAC）
 
-这是项目最复杂的子系统，涉及 OrderServiceImpl、StockLockConsumer、OrderTimeoutScheduler 三者协作。
-
-### 流程
+### JWT 认证流程
 
 ```
-下单 (OrderService.create)
-  └── 同步：校验 → 保存订单+明细(status=0) → 清购物车
-  └── 异步：发送 StockDeductMessage → MQ 锁定队列
-
-MQ消费者 (StockLockConsumer.handleStockLock)
-  └── Redis SETNX 幂等检查
-  └── 检查订单未取消 (status!=4)
-  └── 原子扣库存 (WHERE stock>=qty) + 更新销量
-  └── Redis 标记 stock:locked:{orderId}=LOCKED (TTL=支付超时×2)
-
-支付成功 (PaymentService / OrderService.updatePayStatus)
-  └── 订单 status→1 + 删除 Redis LOCKED 标记
-
-取消订单 (OrderService.cancel)
-  └── 查 Redis LOCKED → 已锁定则发 MQ 释放消息 → 消费者归还库存+回退销量
-  └── 未锁定则直接取消（锁定消费者会跳过已取消订单）
-
-超时自动取消 (OrderTimeoutScheduler，每30s)
-  └── 扫描 status=0 且 create_time < now-15min → 同步归还库存 + status=4
+请求 → AuthInterceptor.preHandle
+  ├─ 白名单路径（登录/注册/公开GET）→ 放行
+  ├─ 解析 Authorization: Bearer <token>
+  ├─ 校验 JWT → Redis黑名单检查
+  ├─ 存入 UserContext (ThreadLocal)：userId, username, permissions, token
+  └─ 检查 @RequirePermission 注解 → 校验权限
+请求结束 → afterCompletion → UserContext.clear()
 ```
 
-### RabbitMQ 拓扑
+### 权限模型
+
+- 前端 GET 浏览接口公开（游客可访问）
+- 写操作（创建/修改/删除）需要对应的具体权限如 `spu:create`、`spu:update`
+- 权限标识符在 JWT 的 claims 中携带，由 `AuthInterceptor` 校验
+- 用户拥有的权限由 `sys_user_role` → `sys_role_permission` → `sys_permission.perm_code` 链路决定
+
+### 角色体系（schema-rbac.sql）
+
+| 角色 | ID | 编码 | 说明 |
+|------|------|------|------|
+| 超级管理员 | 1 | ROLE_ADMIN | 所有权限 |
+| 运营人员 | 2 | ROLE_OPERATOR | 商品+订单管理 |
+| 只读用户 | 3 | ROLE_VIEWER | 仅查看 |
+| 商家 | 4 | ROLE_MERCHANT | 商家后台权限 |
+
+商家拥有 `merchant:*` 权限（info:update, goods:manage, order:manage, stat:view, review:view），**不拥有** `spu:*` 或 `order:*`，不能绕过 MerchantController 直接操作 SpuController。
+
+## 商家系统
+
+三种视角隔离：
+
+| 视角 | 控制器 | 说明 |
+|------|--------|------|
+| 买家端 | MerchantController GET /api/merchant/{id} | 浏览商家列表/详情/商品 |
+| 商家后台 | MerchantController /api/merchant/info, goods, order... | 需 @RequirePermission("merchant:*") |
+| 平台管理 | AdminMerchantController /api/admin/merchant/... | 需 @RequirePermission("merchant:audit/list") |
+
+**Cashier 模式**：商家后台所有查询通过 `getCurrentMerchant()` 从 JWT → UserContext → Merchant 表获取当前商家 ID，SQL 全部 `WHERE merchant_id = ?` 硬隔离，无法操作其他店铺数据。
 
 ```
-Exchange: sheep.mall.stock.exchange (Topic, durable)
-  ├── Queue: sheep.mall.stock.lock.queue    ← routing: stock.lock
-  ├── Queue: sheep.mall.stock.release.queue ← routing: stock.release
-  └── DLX: sheep.mall.stock.dlx.exchange
-        ├── DLQ: sheep.mall.stock.lock.dlq
-        └── DLQ: sheep.mall.stock.release.dlq
+用户登录 → JWT含userId → getCurrentMerchant()查merchant表 → merchant.id
+  → 商品列表: WHERE merchant_id = merchant.id
+  → 订单列表: 通过SPU→order_item→order_info链路过滤
 ```
 
-### 可靠性机制
+### DataInitRunner 测试账号
 
-| 机制 | 实现 |
-|------|------|
-| 生产者确认 | RabbitTemplate ConfirmCallback + ReturnCallback（mandatory=true） |
-| 消费者手动 Ack | acknowledge-mode: manual, prefetch: 1 |
-| 幂等 | Redis SETNX messageId (TTL 24h)，重复消息直接 Ack |
-| 重试（最多3次） | 捕获异常 → 重新 publish 消息（携带 x-retry-count header）→ Ack 旧消息 |
-| 死信 | 超最大重试 → basicNack(requeue=false) → DLX → DLQ，订单 remark 标记"需人工处理" |
-| 锁定状态追踪 | Redis `stock:locked:{orderId}` = "LOCKED"，供取消/超时判断是否需要归还库存 |
-| 防超卖 | 消费者中 `WHERE stock >= quantity SET stock = stock - quantity` 原子更新 |
+| 账号 | 密码 | 角色 | 商家ID |
+|------|------|------|--------|
+| admin | 123456 | ROLE_ADMIN | — |
+| zhangsan | 123456 | ROLE_VIEWER + ROLE_MERCHANT | 1001 |
+| lisi | 123456 | ROLE_VIEWER + ROLE_MERCHANT | 1002 |
+
+## 统一文件上传
+
+```
+POST /api/upload/image?type=avatar|goods|cert
+  → MultipartFile(file) 或 base64(avatarUrl)
+  → OssUtil → Aliyun OSS → 返回完整 URL
+```
+
+- `avatar` → 头像，路径 `avatar/yyyyMMdd/`
+- `goods` → 商品图片，路径 `goods/yyyyMMdd/`
+- `cert` → 营业执照，路径 `cert/yyyyMMdd/`
+
+权限控制：avatar 任何登录用户可传，goods/cert 需对应 merchant 权限。
+旧头像自动删除：`AuthController.updateAvatar()` 上传新图后调用 `OssUtil.deleteByUrl()` 清理 OSS 旧文件。
+商家修改店铺信息时同样会清理旧的 shopLogo 和 businessLicense。
+
+## 库存锁定/释放（RabbitMQ 异步）
+
+见项目代码中的 RabbitMQ 配置和 consumer 包，时序如下：
+
+```
+下单 → MQ stock.lock → 消费者扣库存 → Redis标记 LOCKED
+支付 → 删除 LOCKED 标记
+取消 → 查 LOCKED → 有则 MQ stock.release → 归还库存
+超时(15min) → 定时任务扫描 → 同步归还 + 取消
+```
 
 ### Redis Key 规范
 
-| Key 模式 | 用途 | TTL |
-|----------|------|-----|
-| `stock:lock:msg:{messageId}` | 锁定消息幂等去重 | 24h |
-| `stock:release:msg:{messageId}` | 释放消息幂等去重 | 24h |
-| `stock:locked:{orderId}` | 库存锁定状态（供取消/超时判断） | pay-timeout-minutes × 2 |
-| `cart::{memberId}` | 购物车缓存 | — |
-| `spu::detail:{id}` | SPU 详情缓存 | CacheHelper 管理 |
-
-## 订单状态机
-
-| status | 含义 | 触发 |
-|--------|------|------|
-| 0 | 待支付 | 下单时设置，库存锁定中 |
-| 1 | 已支付 | 微信支付回调 / 模拟支付 |
-| 2 | 已发货 | （预留） |
-| 3 | 已完成 | （预留） |
-| 4 | 已取消 | 用户主动取消 / 超时自动取消 |
-
-状态只能从 0→1 或 0→4，不能回退。取消时需先判断库存是否已被 MQ 锁定，已锁定则归还。
-
-## 支付流程
-
-1. `PaymentService.createJsapiPayment(orderId)` — 调微信 JSAPI 下单，保存 PaymentRecord(PENDING)
-2. `PaymentService.handleNotify(...)` — 微信回调验签+解密，更新 OrderInfo(status=1, payAmount, payTime) + PaymentRecord(SUCCESS)
-3. `PaymentService.mockPay(orderId)` — 开发环境模拟支付，生成 MOCK_ 前缀交易号
-
-微信支付 Bean（JsapiService、RSAAutoCertificateConfig）通过 `@Conditional(wechat.pay.enabled=true)` 控制加载，默认不加载。
+| Key | TTL | 用途 |
+|-----|-----|------|
+| `stock:lock:msg:{id}` | 24h | 锁定消息幂等 |
+| `stock:release:msg:{id}` | 24h | 释放消息幂等 |
+| `stock:locked:{orderId}` | 支付超时×2 | 锁定状态 |
+| `cart::{userId}` | — | 购物车缓存 |
+| `spu::detail:{id}` | CacheHelper | SPU 详情 |
+| `jwt:blacklist:{md5(token)}` | Token 剩余有效期 | 退出登录黑名单 |
 
 ## 关键约定
 
-- **返回类型**: Controller 统一返回 `R<T>`，成功用 `R.ok(data)`，失败抛 `BizException`
-- **异常处理**: `BizException`（含 ResultCode）由 `GlobalExceptionHandler` 统一转为 `R.fail`
-- **分页**: MyBatis-Plus `Page<T>`，已配置 MySQL 方言分页插件
-- **主键**: 雪花算法 `ASSIGN_ID`（MyBatis-Plus global-config 配置）
-- **字段填充**: `createTime` / `updateTime` 由 `MetaObjectHandlerConfig` 自动填充 `LocalDateTime.now()`
-- **逻辑删除**: 部分表保留 `deleted` 字段（TINYINT 0/1），但购物车/订单为直接物理删除
-- **配置文件**: 新增配置项遵循 `sheep.*` 命名空间，在 application-dev.yml 设实际值，application.yml 用 `${}` 引用
-- **CacheHelper**: 封装了防穿透（null标记）、防击穿（SETNX分布式锁+Lua释放）、防雪崩（TTL抖动±20%）三层保护
+- **返回**: Controller 统一 `R<T>`，成功 `R.ok(data)`，失败抛 `BizException`
+- **异常**: `BizException`(含 ResultCode) → `GlobalExceptionHandler` → `R.fail`
+- **分页**: MyBatis-Plus `Page<T>`（MySQL 方言插件已配置）
+- **主键**: 雪花算法 `ASSIGN_ID`（全局配置，实体标注 `@TableId`）
+- **字段填充**: `createTime` / `updateTime` 由 `MetaObjectHandlerConfig` 自动填充
+- **缓存**: `CacheHelper` 封装防穿透(null标记)、防击穿(SETNX分布式锁)、防雪崩(TTL抖动±20%)
+- **配置**: 新增配置项在 application-dev.yml 设实际值，application.yml 用占位符引用
+- **订单状态**: 0待支付 1已支付 2已发货 3已完成 4已取消（仅 0→1 或 0→4）

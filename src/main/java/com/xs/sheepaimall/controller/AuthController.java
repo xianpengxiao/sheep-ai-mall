@@ -1,16 +1,15 @@
 package com.xs.sheepaimall.controller;
 
 import com.xs.sheepaimall.common.R;
-import com.xs.sheepaimall.dto.ChangePasswordDTO;
-import com.xs.sheepaimall.dto.LoginDTO;
-import com.xs.sheepaimall.dto.RegisterDTO;
-import com.xs.sheepaimall.dto.VerifyCodeDTO;
+import com.xs.sheepaimall.dto.*;
 import com.xs.sheepaimall.entity.SysUser;
 import com.xs.sheepaimall.security.RequirePermission;
 import com.xs.sheepaimall.security.UserContext;
 import com.xs.sheepaimall.service.SysUserService;
+import com.xs.sheepaimall.util.DesensitizeUtil;
 import com.xs.sheepaimall.util.OssUtil;
 import com.xs.sheepaimall.vo.LoginVO;
+import com.xs.sheepaimall.vo.SecurityProfileVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -117,17 +116,77 @@ public class AuthController {
         return R.ok();
     }
 
-    @Operation(summary = "获取当前登录用户信息", description = "从 JWT Token 解析用户信息")
+    @Operation(summary = "获取当前登录用户信息", description = "从 JWT Token 解析用户信息，查数据库补齐用户资料")
     @GetMapping("/me")
     public R<LoginVO> me() {
         Long userId = UserContext.getUserId();
         String username = UserContext.getUsername();
+        SysUser user = sysUserService.getById(userId);
         return R.ok(LoginVO.builder()
                 .userId(userId)
                 .username(username)
+                .realName(user != null ? DesensitizeUtil.name(user.getRealName()) : null)
+                .avatar(user != null ? user.getAvatar() : null)
+                .nickname(user != null ? user.getNickname() : null)
+                .gender(user != null ? user.getGender() : null)
+                .birthday(user != null ? user.getBirthday() : null)
+                .signature(user != null ? user.getSignature() : null)
+                .isPerfect(user != null ? user.getIsPerfect() : null)
+                .status(user != null ? user.getStatus() : null)
+                .lastLogin(user != null ? user.getLastLogin() : null)
                 .roles(UserContext.getRoles())
                 .permissions(UserContext.getPermissions())
                 .build());
+    }
+
+    // ========== 实名认证 & 安全资料 ==========
+
+    @Operation(summary = "获取实名&安全资料", description = "返回已脱敏的实名状态、手机号、邮箱信息")
+    @GetMapping("/profile")
+    public R<SecurityProfileVO> securityProfile() {
+        return R.ok(sysUserService.getSecurityProfile(UserContext.getUserId()));
+    }
+
+    @Operation(summary = "提交实名认证", description = "真实姓名+身份证号，已实名不可重复提交")
+    @PostMapping("/realname")
+    public R<Void> submitRealName(@Valid @RequestBody RealNameAuthDTO dto) {
+        sysUserService.submitRealName(UserContext.getUserId(), dto);
+        return R.ok();
+    }
+
+    @Operation(summary = "绑定/修改手机号", description = "需短信验证码验证，手机号全局唯一")
+    @PutMapping("/phone")
+    public R<Void> bindPhone(@Valid @RequestBody BindPhoneDTO dto) {
+        sysUserService.bindPhone(UserContext.getUserId(), dto);
+        return R.ok();
+    }
+
+    @Operation(summary = "绑定/修改邮箱", description = "需邮箱验证码验证")
+    @PutMapping("/email")
+    public R<Void> bindEmail(@Valid @RequestBody BindEmailDTO dto) {
+        sysUserService.bindEmail(UserContext.getUserId(), dto);
+        return R.ok();
+    }
+
+    @Operation(summary = "发送邮箱验证码", description = "60秒内不可重复发送，真实发送到邮箱")
+    @PostMapping("/send-email")
+    public R<Void> sendEmailCode(@RequestParam String email) {
+        sysUserService.sendEmailCode(email);
+        return R.ok();
+    }
+
+    @Operation(summary = "发送原手机号验证码", description = "换绑手机号时向当前绑定手机号发送验证码，验证本人操作")
+    @PostMapping("/send-old-phone-code")
+    public R<Void> sendOldPhoneCode() {
+        sysUserService.sendOldPhoneCode(UserContext.getUserId());
+        return R.ok();
+    }
+
+    @Operation(summary = "发送原邮箱验证码", description = "换绑邮箱时向当前绑定邮箱发送验证码，验证本人操作")
+    @PostMapping("/send-old-email-code")
+    public R<Void> sendOldEmailCode() {
+        sysUserService.sendOldEmailCode(UserContext.getUserId());
+        return R.ok();
     }
 
     @Operation(summary = "权限测试接口", description = "需要 spu:delete 权限才能访问")

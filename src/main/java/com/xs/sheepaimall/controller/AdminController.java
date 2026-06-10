@@ -53,6 +53,12 @@ public class AdminController {
                     .id(user.getId())
                     .username(user.getUsername())
                     .realName(user.getRealName())
+                    .nickname(user.getNickname())
+                    .gender(user.getGender())
+                    .birthday(user.getBirthday())
+                    .signature(user.getSignature())
+                    .idCard(user.getIdCard())
+                    .isPerfect(user.getIsPerfect())
                     .phone(user.getPhone())
                     .email(user.getEmail())
                     .avatar(user.getAvatar())
@@ -83,6 +89,16 @@ public class AdminController {
             @Parameter(description = "用户ID") @PathVariable Long userId,
             @Valid @RequestBody AssignRolesDTO dto) {
         sysUserService.assignRoles(userId, dto.getRoleIds());
+        return R.ok();
+    }
+
+    @Operation(summary = "启用/禁用用户", description = "修改用户状态：1=正常 0=禁用")
+    @RequirePermission("sys:user:update")
+    @PutMapping("/users/{id}/status")
+    public R<Void> updateUserStatus(
+            @Parameter(description = "用户ID") @PathVariable Long id,
+            @Parameter(description = "状态：1=正常 0=禁用") @RequestParam Integer status) {
+        sysUserService.updateStatus(id, status);
         return R.ok();
     }
 

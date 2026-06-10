@@ -2,13 +2,10 @@ package com.xs.sheepaimall.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.xs.sheepaimall.dto.LoginDTO;
-import com.xs.sheepaimall.dto.RegisterDTO;
+import com.xs.sheepaimall.dto.*;
 import com.xs.sheepaimall.entity.SysRole;
 import com.xs.sheepaimall.entity.SysUser;
-import com.xs.sheepaimall.dto.UserProfileUpdateDTO;
-import com.xs.sheepaimall.vo.LoginVO;
-import com.xs.sheepaimall.vo.UserProfileVO;
+import com.xs.sheepaimall.vo.*;
 
 import java.util.List;
 
@@ -34,6 +31,9 @@ public interface SysUserService extends IService<SysUser> {
 
     /** [管理员] 分页查询所有用户 */
     Page<SysUser> listUsers(int pageNum, int pageSize, String keyword);
+
+    /** [管理员] 启用/禁用用户 */
+    void updateStatus(Long userId, Integer status);
 
     /** 查询用户的角色编码列表 */
     List<String> getUserRoleCodes(Long userId);
@@ -69,4 +69,27 @@ public interface SysUserService extends IService<SysUser> {
 
     /** 修改用户资料（昵称有敏感词校验） */
     UserProfileVO updateProfile(Long userId, UserProfileUpdateDTO dto);
+
+    // ========== 实名认证 & 安全资料 ==========
+
+    /** 获取实名&安全资料（已脱敏） */
+    SecurityProfileVO getSecurityProfile(Long userId);
+
+    /** 提交实名认证 */
+    void submitRealName(Long userId, RealNameAuthDTO dto);
+
+    /** 绑定/修改手机号 */
+    void bindPhone(Long userId, BindPhoneDTO dto);
+
+    /** 绑定/修改邮箱 */
+    void bindEmail(Long userId, BindEmailDTO dto);
+
+    /** 发送邮箱验证码 */
+    void sendEmailCode(String email);
+
+    /** 发送原手机号验证码（换绑时验证本人操作） */
+    void sendOldPhoneCode(Long userId);
+
+    /** 发送原邮箱验证码（换绑时验证本人操作） */
+    void sendOldEmailCode(Long userId);
 }

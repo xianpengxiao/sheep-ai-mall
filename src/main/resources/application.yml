@@ -94,6 +94,19 @@ spring:
     access-key-secret: ${sheep.alioss.access-key-secret}
     bucket-name: ${sheep.alioss.bucket-name}
 
+  # 邮件发送（邮箱验证码）
+  mail:
+    host: ${sheep.mail.host}
+    port: ${sheep.mail.port}
+    username: ${sheep.mail.username}
+    password: ${sheep.mail.password}
+    properties:
+      mail:
+        smtp:
+          auth: ${sheep.mail.smtp-auth}
+          starttls:
+            enable: ${sheep.mail.starttls}
+
 # MyBatis-Plus 配置
 mybatis-plus:
   # 实体类扫描包（多个用逗号分隔）
