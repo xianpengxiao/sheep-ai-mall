@@ -26,6 +26,7 @@ import com.xs.sheepaimall.mapper.SpuMapper;
 import com.xs.sheepaimall.service.CategoryService;
 import com.xs.sheepaimall.service.SkuService;
 import com.xs.sheepaimall.service.SpuService;
+import com.xs.sheepaimall.vo.SkuStockVO;
 import com.xs.sheepaimall.vo.SkuVO;
 import com.xs.sheepaimall.vo.SpuVO;
 import jakarta.annotation.Resource;
@@ -33,6 +34,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,6 +69,7 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
     public Page<Spu> pageQuery(SpuQueryDTO dto) {
         LambdaQueryWrapper<Spu> wrapper = new LambdaQueryWrapper<Spu>()
                 .eq(dto.getCategoryId() != null, Spu::getCategoryId, dto.getCategoryId())
+                .eq(dto.getMerchantId() != null, Spu::getMerchantId, dto.getMerchantId())
                 .like(StrUtil.isNotBlank(dto.getKeyword()), Spu::getName, dto.getKeyword())
                 .eq(dto.getStatus() != null, Spu::getStatus, dto.getStatus())
                 .eq(Spu::getAuditStatus, 1); // 公开查询只显示审核通过的商品
@@ -114,6 +117,39 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
                     });
             page.getRecords().forEach(spu ->
                     spu.setMinPrice(minPriceMap.get(spu.getId())));
+
+            // 批量填充库存信息
+            if (!spuIds.isEmpty()) {
+                List<Sku> allSkus = skuService.lambdaQuery()
+                        .in(Sku::getSpuId, spuIds)
+                        .eq(Sku::getStatus, 1)
+                        .select(Sku::getSpuId, Sku::getSkuName, Sku::getPrice, Sku::getStock)
+                        .list();
+
+                Map<Long, List<Sku>> skuGroup = allSkus.stream()
+                        .collect(Collectors.groupingBy(Sku::getSpuId));
+
+                for (Spu spu : page.getRecords()) {
+                    List<Sku> skus = skuGroup.getOrDefault(spu.getId(), Collections.emptyList());
+                    int totalStock = skus.stream().mapToInt(Sku::getStock).sum();
+                    boolean multiSpec = skus.size() > 1;
+                    long outOfStockCount = skus.stream().filter(s -> s.getStock() == 0).count();
+                    boolean partOutOfStock = outOfStockCount > 0 && outOfStockCount < skus.size();
+
+                    spu.setTotalStock(totalStock);
+                    spu.setStockStatus(totalStock == 0 ? 0 : totalStock <= 10 ? 2 : 1);
+                    spu.setMultiSpec(multiSpec);
+                    spu.setPartOutOfStock(partOutOfStock);
+                    spu.setSkuStockList(skus.stream().map(sku -> {
+                        SkuStockVO vo = new SkuStockVO();
+                        vo.setSkuId(sku.getId());
+                        vo.setSkuName(sku.getSkuName());
+                        vo.setPrice(sku.getPrice());
+                        vo.setStock(sku.getStock());
+                        return vo;
+                    }).collect(Collectors.toList()));
+                }
+            }
         }
 
         return page;

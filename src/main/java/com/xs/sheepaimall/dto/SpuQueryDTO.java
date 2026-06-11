@@ -20,6 +20,9 @@ public class SpuQueryDTO {
     @Schema(description = "排序字段：sales_count / create_time")
     private String orderBy;
 
+    @Schema(description = "商家ID筛选")
+    private Long merchantId;
+
     @Schema(description = "页码", example = "1")
     private Integer pageNum = 1;
 
