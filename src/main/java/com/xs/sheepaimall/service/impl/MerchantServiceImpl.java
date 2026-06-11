@@ -15,6 +15,7 @@ import com.xs.sheepaimall.mapper.MerchantApplyMapper;
 import com.xs.sheepaimall.mapper.MerchantInfoChangeMapper;
 import com.xs.sheepaimall.mapper.MerchantMapper;
 import com.xs.sheepaimall.mapper.OrderInfoMapper;
+import com.xs.sheepaimall.mapper.SysUserMapper;
 import com.xs.sheepaimall.mapper.SysUserRoleMapper;
 import com.xs.sheepaimall.security.UserContext;
 import com.xs.sheepaimall.service.MerchantDsrService;
@@ -65,6 +66,9 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
     @Resource
     private OrderItemService orderItemService;
+
+    @Resource
+    private SysUserMapper sysUserMapper;
 
     @Resource
     private SysUserRoleMapper sysUserRoleMapper;
@@ -161,7 +165,25 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         log.info("商家入驻申请已提交 userId={}, applyId={}", userId, apply.getId());
     }
 
-
+    @Override
+    public MerchantApplyVO getMyApply() {
+        Long userId = UserContext.getUserId();
+        MerchantApply apply = merchantApplyMapper.selectOne(
+                new LambdaQueryWrapper<MerchantApply>()
+                        .eq(MerchantApply::getUserId, userId)
+                        .orderByDesc(MerchantApply::getCreateTime)
+                        .last("LIMIT 1"));
+        if (apply == null) {
+            return null;
+        }
+        MerchantApplyVO vo = new MerchantApplyVO();
+        BeanUtil.copyProperties(apply, vo);
+        SysUser user = sysUserMapper.selectById(apply.getUserId());
+        if (user != null) {
+            vo.setUsername(user.getUsername());
+        }
+        return vo;
+    }
 
     // ==================== 商家后台 ====================
 
@@ -399,13 +421,14 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     }
 
     @Override
-    public Page<Spu> pageMyGoods(int pageNum, int pageSize, String keyword, Long categoryId) {
+    public Page<Spu> pageMyGoods(int pageNum, int pageSize, String keyword, Long categoryId, Integer status) {
         Merchant merchant = getCurrentMerchant();
         Page<Spu> page = spuService.page(
                 new Page<>(pageNum, pageSize),
                 new LambdaQueryWrapper<Spu>()
                         .eq(Spu::getMerchantId, merchant.getId())
                         .eq(categoryId != null, Spu::getCategoryId, categoryId)
+                        .eq(status != null, Spu::getStatus, status)
                         .like(StrUtil.isNotBlank(keyword), Spu::getName, keyword)
                         .orderByDesc(Spu::getCreateTime));
 
@@ -415,7 +438,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
             // 一次查出所有SKU
             List<Sku> allSkus = skuService.lambdaQuery()
                     .in(Sku::getSpuId, spuIds)
-                    .select(Sku::getSpuId, Sku::getId, Sku::getSkuName, Sku::getPrice, Sku::getStock, Sku::getStatus)
+                    .select(Sku::getSpuId, Sku::getId, Sku::getSkuName, Sku::getPrice, Sku::getStock, Sku::getStatus, Sku::getImage)
                     .list();
             Map<Long, List<Sku>> skuMap = allSkus.stream()
                     .collect(Collectors.groupingBy(Sku::getSpuId));
@@ -442,6 +465,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                     vo.setSkuName(s.getSkuName());
                     vo.setPrice(s.getPrice());
                     vo.setStock(s.getStock());
+                    vo.setImage(s.getImage());
                     stockList.add(vo);
                 }
 
@@ -707,6 +731,39 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     }
 
     @Override
+    public Page<MerchantApplyVO> pageAllApply(int pageNum, int pageSize, Integer status, String keyword) {
+        Page<MerchantApply> page = merchantApplyMapper.selectPage(
+                new Page<>(pageNum, pageSize),
+                new LambdaQueryWrapper<MerchantApply>()
+                        .eq(status != null, MerchantApply::getStatus, status)
+                        .and(StrUtil.isNotBlank(keyword), w -> w
+                                .like(MerchantApply::getShopName, keyword)
+                                .or()
+                                .like(MerchantApply::getContactName, keyword)
+                                .or()
+                                .like(MerchantApply::getContactPhone, keyword))
+                        .orderByDesc(MerchantApply::getCreateTime));
+
+        List<MerchantApplyVO> voList = page.getRecords().stream().map(apply -> {
+            MerchantApplyVO vo = new MerchantApplyVO();
+            BeanUtil.copyProperties(apply, vo);
+            // 查询申请人用户名
+            if (apply.getUserId() != null) {
+                SysUser user = sysUserMapper.selectById(apply.getUserId());
+                if (user != null) {
+                    vo.setUsername(user.getUsername());
+                }
+            }
+            return vo;
+        }).collect(Collectors.toList());
+
+        Page<MerchantApplyVO> result = new Page<>(pageNum, pageSize);
+        result.setTotal(page.getTotal());
+        result.setRecords(voList);
+        return result;
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void auditApply(Long applyId, MerchantAuditDTO dto) {
         MerchantApply apply = merchantApplyMapper.selectById(applyId);
@@ -737,6 +794,9 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                 merchant.setBusinessScope(apply.getBusinessScope());
                 merchant.setContactName(apply.getContactName());
                 merchant.setContactPhone(apply.getContactPhone());
+                merchant.setFoodLicense(apply.getFoodLicense());
+                merchant.setLegalPerson(apply.getLegalPerson());
+                merchant.setBusinessAddress(apply.getBusinessAddress());
                 merchant.setStatus(1);
                 merchant.setAuditTime(LocalDateTime.now());
                 this.save(merchant);
@@ -746,6 +806,9 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                 merchant.setBusinessScope(apply.getBusinessScope());
                 merchant.setContactName(apply.getContactName());
                 merchant.setContactPhone(apply.getContactPhone());
+                merchant.setFoodLicense(apply.getFoodLicense());
+                merchant.setLegalPerson(apply.getLegalPerson());
+                merchant.setBusinessAddress(apply.getBusinessAddress());
                 merchant.setStatus(1);
                 merchant.setAuditRemark(null);
                 merchant.setAuditTime(LocalDateTime.now());

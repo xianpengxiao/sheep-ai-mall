@@ -35,6 +35,9 @@ public interface SpuService extends IService<Spu> {
     /** 审核商品（通过/驳回） */
     void auditSpu(Long spuId, Integer auditStatus, String auditMsg);
 
-    /** 待审核商品分页（管理员） */
-    Page<Spu> pagePendingAudit(int pageNum, int pageSize);
+    /** 待审核商品分页（管理员），支持按审核状态/名称/分类/商家筛选 */
+    Page<Spu> pagePendingAudit(int pageNum, int pageSize, Integer auditStatus, String keyword, Long categoryId, Long merchantId);
+
+    /** 管理员查看商品详情（不限审核状态，不走缓存） */
+    SpuVO getAdminSpuDetail(Long id);
 }

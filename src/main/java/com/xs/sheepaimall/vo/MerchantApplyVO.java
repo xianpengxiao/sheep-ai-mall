@@ -16,6 +16,9 @@ public class MerchantApplyVO {
     @Schema(description = "申请人用户ID")
     private Long userId;
 
+    @Schema(description = "申请人用户名")
+    private String username;
+
     @Schema(description = "店铺名称")
     private String shopName;
 
@@ -30,6 +33,15 @@ public class MerchantApplyVO {
 
     @Schema(description = "联系电话")
     private String contactPhone;
+
+    @Schema(description = "食品经营许可证")
+    private String foodLicense;
+
+    @Schema(description = "法人信息")
+    private String legalPerson;
+
+    @Schema(description = "经营地址")
+    private String businessAddress;
 
     @Schema(description = "审核状态 0待审核 1通过 2驳回")
     private Integer status;

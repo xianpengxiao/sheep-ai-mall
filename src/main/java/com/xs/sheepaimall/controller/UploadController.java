@@ -64,8 +64,8 @@ public class UploadController {
      * 按 type 校验上传权限
      */
     private void checkUploadPermission(String type) {
-        if ("avatar".equals(type)) {
-            return; // 仅需登录（AuthInterceptor 已拦截未登录请求）
+        if ("avatar".equals(type) || "cert".equals(type)) {
+            return; // avatar/cert 仅需登录（cert 用于入驻申请，申请人还不是商家）
         }
         List<String> perms = UserContext.getPermissions();
         if (perms == null || perms.isEmpty()) {

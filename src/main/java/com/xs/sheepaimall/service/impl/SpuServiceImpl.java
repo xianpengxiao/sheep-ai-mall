@@ -26,6 +26,7 @@ import com.xs.sheepaimall.mapper.SpuMapper;
 import com.xs.sheepaimall.service.CategoryService;
 import com.xs.sheepaimall.service.SkuService;
 import com.xs.sheepaimall.service.SpuService;
+import com.xs.sheepaimall.security.UserContext;
 import com.xs.sheepaimall.vo.SkuStockVO;
 import com.xs.sheepaimall.vo.SkuVO;
 import com.xs.sheepaimall.vo.SpuVO;
@@ -123,7 +124,7 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
                 List<Sku> allSkus = skuService.lambdaQuery()
                         .in(Sku::getSpuId, spuIds)
                         .eq(Sku::getStatus, 1)
-                        .select(Sku::getSpuId, Sku::getSkuName, Sku::getPrice, Sku::getStock)
+                        .select(Sku::getSpuId, Sku::getSkuName, Sku::getPrice, Sku::getStock, Sku::getImage)
                         .list();
 
                 Map<Long, List<Sku>> skuGroup = allSkus.stream()
@@ -146,6 +147,7 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
                         vo.setSkuName(sku.getSkuName());
                         vo.setPrice(sku.getPrice());
                         vo.setStock(sku.getStock());
+                        vo.setImage(sku.getImage());
                         return vo;
                     }).collect(Collectors.toList()));
                 }
@@ -284,6 +286,13 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
         if (dto.getImageList() != null) {
             spu.setImageList(JSONUtil.toJsonStr(dto.getImageList()));
         }
+
+        // 驳回的商品重新编辑 → 自动重置为待审核
+        if (existSpu.getAuditStatus() != null && existSpu.getAuditStatus() == 2) {
+            spu.setAuditStatus(0);
+            spu.setAuditMsg(null);
+        }
+
         this.updateById(spu);
 
         if (dto.getSkuList() != null) {
@@ -325,6 +334,7 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
         Spu update = new Spu();
         update.setId(spuId);
         update.setAuditStatus(auditStatus);
+        update.setAuditBy(UserContext.getUsername());
         if (auditStatus == 1) {
             // 审核通过 → 自动上架
             update.setStatus(1);
@@ -346,12 +356,51 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
     }
 
     @Override
-    public Page<Spu> pagePendingAudit(int pageNum, int pageSize) {
-        return this.page(
+    public Page<Spu> pagePendingAudit(int pageNum, int pageSize, Integer auditStatus, String keyword, Long categoryId, Long merchantId) {
+        Page<Spu> page = this.page(
                 new Page<>(pageNum, pageSize),
                 new LambdaQueryWrapper<Spu>()
-                        .eq(Spu::getAuditStatus, 0)
+                        .eq(Spu::getAuditStatus, auditStatus != null ? auditStatus : 0)
+                        .like(StrUtil.isNotBlank(keyword), Spu::getName, keyword)
+                        .eq(categoryId != null, Spu::getCategoryId, categoryId)
+                        .eq(merchantId != null, Spu::getMerchantId, merchantId)
                         .orderByDesc(Spu::getCreateTime));
+
+        // 批量填充最低价格、SKU数量
+        if (!page.getRecords().isEmpty()) {
+            List<Long> spuIds = page.getRecords().stream().map(Spu::getId).collect(Collectors.toList());
+            Map<Long, BigDecimal> minPriceMap = new HashMap<>();
+            Map<Long, Integer> skuCountMap = new HashMap<>();
+            skuService.lambdaQuery()
+                    .in(Sku::getSpuId, spuIds)
+                    .select(Sku::getSpuId, Sku::getPrice)
+                    .list()
+                    .forEach(sku -> {
+                        BigDecimal current = minPriceMap.get(sku.getSpuId());
+                        if (current == null || sku.getPrice().compareTo(current) < 0) {
+                            minPriceMap.put(sku.getSpuId(), sku.getPrice());
+                        }
+                        skuCountMap.merge(sku.getSpuId(), 1, Integer::sum);
+                    });
+            page.getRecords().forEach(spu -> {
+                spu.setMinPrice(minPriceMap.get(spu.getId()));
+                spu.setSkuCount(skuCountMap.getOrDefault(spu.getId(), 0));
+            });
+        }
+        return page;
+    }
+
+    @Override
+    public SpuVO getAdminSpuDetail(Long id) {
+        SpuVO vo = loadDetailFromDb(id);
+        // 补充审核信息（loadDetailFromDb不填充这些字段）
+        Spu spu = this.getById(id);
+        if (spu != null) {
+            vo.setAuditStatus(spu.getAuditStatus());
+            vo.setAuditMsg(spu.getAuditMsg());
+            vo.setAuditBy(spu.getAuditBy());
+        }
+        return vo;
     }
 
     /** 重写逻辑删除，同时清除缓存 */

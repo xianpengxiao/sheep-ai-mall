@@ -28,4 +28,13 @@ public class MerchantApplyDTO {
     @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确")
     @Schema(description = "联系电话")
     private String contactPhone;
+
+    @Schema(description = "食品经营许可证")
+    private String foodLicense;
+
+    @Schema(description = "法人信息")
+    private String legalPerson;
+
+    @Schema(description = "经营地址")
+    private String businessAddress;
 }

@@ -29,6 +29,9 @@ public interface MerchantService extends IService<Merchant> {
     /** 提交入驻申请 */
     void apply(MerchantApplyDTO dto);
 
+    /** 查询当前用户的入驻申请状态 */
+    MerchantApplyVO getMyApply();
+
     // ========== 商家后台 ==========
 
     /** 查询当前商家的店铺信息 */
@@ -47,7 +50,7 @@ public interface MerchantService extends IService<Merchant> {
     void updateGoodsStatus(Long id, Integer status);
 
     /** 商家商品列表分页 */
-    Page<Spu> pageMyGoods(int pageNum, int pageSize, String keyword, Long categoryId);
+    Page<Spu> pageMyGoods(int pageNum, int pageSize, String keyword, Long categoryId, Integer status);
 
     /** 店铺订单分页 */
     Page<MerchantOrderVO> pageMyOrders(int pageNum, int pageSize, Integer status);
@@ -65,6 +68,9 @@ public interface MerchantService extends IService<Merchant> {
 
     /** 全量商家列表 */
     Page<MerchantVO> pageAllMerchant(int pageNum, int pageSize, Integer status, String keyword);
+
+    /** 入驻申请列表 */
+    Page<MerchantApplyVO> pageAllApply(int pageNum, int pageSize, Integer status, String keyword);
 
     /** 审核入驻申请 */
     void auditApply(Long applyId, MerchantAuditDTO dto);

@@ -11,6 +11,7 @@ import com.xs.sheepaimall.service.MerchantDsrService;
 import com.xs.sheepaimall.service.MerchantService;
 import com.xs.sheepaimall.service.ReviewService;
 import com.xs.sheepaimall.vo.IncomeStatVO;
+import com.xs.sheepaimall.vo.MerchantApplyVO;
 import com.xs.sheepaimall.vo.MerchantDsrVO;
 import com.xs.sheepaimall.vo.MerchantOrderVO;
 import com.xs.sheepaimall.vo.MerchantVO;
@@ -73,6 +74,13 @@ public class MerchantController {
         return R.ok();
     }
 
+    @Operation(summary = "查询入驻申请状态", description = "返回当前用户最新的入驻申请记录（含审核状态和驳回原因）")
+    @GetMapping("/apply/status")
+    public R<MerchantApplyVO> applyStatus() {
+        MerchantApplyVO vo = merchantService.getMyApply();
+        return vo != null ? R.ok(vo) : R.fail("暂无入驻申请记录");
+    }
+
     // ==================== 商家后台 ====================
 
     @Operation(summary = "店铺信息查询")
@@ -122,8 +130,9 @@ public class MerchantController {
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int pageNum,
             @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int pageSize,
             @Parameter(description = "关键词") @RequestParam(required = false) String keyword,
-            @Parameter(description = "分类ID") @RequestParam(required = false) Long categoryId) {
-        return R.ok(merchantService.pageMyGoods(pageNum, pageSize, keyword, categoryId));
+            @Parameter(description = "分类ID") @RequestParam(required = false) Long categoryId,
+            @Parameter(description = "商品状态 0下架 1上架") @RequestParam(required = false) Integer status) {
+        return R.ok(merchantService.pageMyGoods(pageNum, pageSize, keyword, categoryId, status));
     }
 
     @Operation(summary = "店铺订单分页")

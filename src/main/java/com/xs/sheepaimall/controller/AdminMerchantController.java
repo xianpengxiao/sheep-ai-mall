@@ -6,6 +6,7 @@ import com.xs.sheepaimall.dto.MerchantAuditDTO;
 import com.xs.sheepaimall.dto.MerchantInfoAuditDTO;
 import com.xs.sheepaimall.security.RequirePermission;
 import com.xs.sheepaimall.service.MerchantService;
+import com.xs.sheepaimall.vo.MerchantApplyVO;
 import com.xs.sheepaimall.vo.MerchantInfoChangeVO;
 import com.xs.sheepaimall.vo.MerchantVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -34,6 +35,17 @@ public class AdminMerchantController {
             @Parameter(description = "商家状态 0待审核 1已开通 2已关闭") @RequestParam(required = false) Integer status,
             @Parameter(description = "关键词(店铺名/联系人/手机号)") @RequestParam(required = false) String keyword) {
         return R.ok(merchantService.pageAllMerchant(pageNum, pageSize, status, keyword));
+    }
+
+    @Operation(summary = "入驻申请列表", description = "支持按状态和关键词筛选")
+    @GetMapping("/apply/page")
+    @RequirePermission("merchant:audit:list")
+    public R<Page<MerchantApplyVO>> applyPage(
+            @Parameter(description = "页码") @RequestParam(defaultValue = "1") int pageNum,
+            @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int pageSize,
+            @Parameter(description = "审核状态 0待审核 1通过 2驳回") @RequestParam(required = false) Integer status,
+            @Parameter(description = "关键词(店铺名/联系人/手机号)") @RequestParam(required = false) String keyword) {
+        return R.ok(merchantService.pageAllApply(pageNum, pageSize, status, keyword));
     }
 
     @Operation(summary = "审核入驻申请", description = "通过或驳回商家入驻申请，通过后自动创建商家记录并分配商家角色")

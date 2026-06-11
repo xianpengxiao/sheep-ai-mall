@@ -20,4 +20,7 @@ public class SkuStockVO {
 
     @Schema(description = "库存数")
     private Integer stock;
+
+    @Schema(description = "规格图片URL")
+    private String image;
 }

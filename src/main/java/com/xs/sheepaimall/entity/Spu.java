@@ -50,6 +50,9 @@ public class Spu {
     @Schema(description = "审核驳回原因")
     private String auditMsg;
 
+    @Schema(description = "审核人用户名")
+    private String auditBy;
+
     @Schema(description = "销量")
     private Integer salesCount;
 
@@ -80,6 +83,10 @@ public class Spu {
     @Schema(description = "各SKU库存明细（悬浮提示用）")
     @TableField(exist = false)
     private List<com.xs.sheepaimall.vo.SkuStockVO> skuStockList;
+
+    @Schema(description = "SKU数量")
+    @TableField(exist = false)
+    private Integer skuCount;
 
     @Schema(description = "创建时间")
     @TableField(fill = FieldFill.INSERT)
