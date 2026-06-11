@@ -122,13 +122,39 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         if (merchant == null) {
             throw new BizException(ResultCode.NOT_FOUND.getCode(), "商家不存在");
         }
-        return spuService.page(
+        Page<Spu> page = spuService.page(
                 new Page<>(pageNum, pageSize),
                 new LambdaQueryWrapper<Spu>()
                         .eq(Spu::getMerchantId, merchantId)
                         .eq(Spu::getStatus, 1)
                         .eq(Spu::getAuditStatus, 1)
                         .orderByDesc(Spu::getSalesCount));
+
+        // 批量填充最低价
+        if (!page.getRecords().isEmpty()) {
+            List<Long> spuIds = page.getRecords().stream().map(Spu::getId).collect(Collectors.toList());
+            List<Sku> allSkus = skuService.lambdaQuery()
+                    .in(Sku::getSpuId, spuIds)
+                    .select(Sku::getSpuId, Sku::getPrice, Sku::getStock, Sku::getStatus)
+                    .list();
+            Map<Long, List<Sku>> skuMap = allSkus.stream()
+                    .collect(Collectors.groupingBy(Sku::getSpuId));
+            for (Spu spu : page.getRecords()) {
+                List<Sku> skus = skuMap.get(spu.getId());
+                if (skus == null || skus.isEmpty()) continue;
+                List<Sku> activeSkus = skus.stream()
+                        .filter(s -> s.getStatus() != null && s.getStatus() == 1)
+                        .collect(Collectors.toList());
+                if (activeSkus.isEmpty()) continue;
+                spu.setMinPrice(activeSkus.stream()
+                        .map(Sku::getPrice)
+                        .filter(Objects::nonNull)
+                        .min(Comparator.naturalOrder())
+                        .orElse(null));
+            }
+        }
+
+        return page;
     }
 
     @Override

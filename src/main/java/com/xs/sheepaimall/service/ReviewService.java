@@ -22,6 +22,9 @@ public interface ReviewService extends IService<ProductReview> {
     /** [商家] 分页查询店铺商品的评价（支持按状态筛选、内容关键词搜索） */
     Page<ReviewVO> pageByMerchant(int pageNum, int pageSize, Integer status, Integer reviewStatus, String keyword);
 
+    /** [公开] 分页查询店铺商品的评价（用于店铺页展示），rating=1差评(1-2) 2中评(3) 3好评(4-5) */
+    Page<ReviewVO> pageByMerchantPublic(Long merchantId, int pageNum, int pageSize, Integer rating);
+
     /** [管理员] 隐藏/显示评价 */
     void toggleStatus(Long id, Integer status);
 

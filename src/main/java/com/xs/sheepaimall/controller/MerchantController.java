@@ -213,4 +213,16 @@ public class MerchantController {
         Long merchantId = merchantService.getCurrentMerchantId();
         return R.ok(merchantDsrService.getTrendDsr(merchantId));
     }
+
+    // ==================== 店铺页公开接口 ====================
+
+    @Operation(summary = "店铺评价列表", description = "公开接口，分页查询指定店铺的所有商品评价，支持好评中评差评筛选")
+    @GetMapping("/{merId}/reviews")
+    public R<Page<ReviewVO>> shopReviews(
+            @Parameter(description = "商家ID") @PathVariable Long merId,
+            @Parameter(description = "页码") @RequestParam(defaultValue = "1") int pageNum,
+            @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int pageSize,
+            @Parameter(description = "评分分类 1差评 2中评 3好评（不传查全部）") @RequestParam(required = false) Integer rating) {
+        return R.ok(reviewService.pageByMerchantPublic(merId, pageNum, pageSize, rating));
+    }
 }

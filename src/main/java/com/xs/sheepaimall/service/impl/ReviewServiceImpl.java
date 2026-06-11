@@ -156,9 +156,36 @@ public class ReviewServiceImpl extends ServiceImpl<ProductReviewMapper, ProductR
                         .in(ProductReview::getSpuId, spuIds)
                         .eq(ProductReview::getStatus, displayStatus)
                         .eq(reviewStatus != null, ProductReview::getReviewStatus, reviewStatus)
-                        .like(StrUtil.isNotBlank(keyword), ProductReview::getContent, keyword)
                         .orderByDesc(ProductReview::getCreateTime));
 
+        return toReviewVOPage(page);
+    }
+
+    @Override
+    public Page<ReviewVO> pageByMerchantPublic(Long merchantId, int pageNum, int pageSize, Integer rating) {
+        // 查该店铺所有 SPU ID
+        List<Long> spuIds = spuService.listObjs(
+                new LambdaQueryWrapper<Spu>()
+                        .eq(Spu::getMerchantId, merchantId)
+                        .select(Spu::getId),
+                o -> (Long) o);
+        if (spuIds.isEmpty()) {
+            return new Page<>(pageNum, pageSize);
+        }
+
+        LambdaQueryWrapper<ProductReview> wrapper = new LambdaQueryWrapper<ProductReview>()
+                .in(ProductReview::getSpuId, spuIds)
+                .eq(ProductReview::getStatus, 1)
+                .orderByDesc(ProductReview::getCreateTime);
+
+        // rating 分类：1差评(1-2) 2中评(3) 3好评(4-5)
+        if (rating != null) {
+            if (rating == 1) wrapper.le(ProductReview::getRating, 2);
+            else if (rating == 2) wrapper.eq(ProductReview::getRating, 3);
+            else if (rating == 3) wrapper.ge(ProductReview::getRating, 4);
+        }
+
+        Page<ProductReview> page = this.page(new Page<>(pageNum, pageSize), wrapper);
         return toReviewVOPage(page);
     }
 
