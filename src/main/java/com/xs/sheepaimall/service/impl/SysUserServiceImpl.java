@@ -592,6 +592,65 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         emailUtil.sendCode(email, code);
     }
 
+    @Override
+    public boolean verifyEmailCode(String email, String code) {
+        if (email == null || code == null) return false;
+        String codeKey = CacheConstants.EMAIL_CODE_PREFIX + email;
+        String saved = stringRedisTemplate.opsForValue().get(codeKey);
+        if (saved == null) return false;
+        boolean valid = saved.equals(code);
+        if (valid) {
+            stringRedisTemplate.delete(codeKey);
+            String verifiedKey = CacheConstants.EMAIL_VERIFIED_PREFIX + email;
+            stringRedisTemplate.opsForValue().set(verifiedKey, "1", java.time.Duration.ofMinutes(10));
+        }
+        return valid;
+    }
+
+    @Override
+    public boolean checkEmailExists(String email) {
+        if (email == null || email.isBlank()) return false;
+        return this.lambdaQuery().eq(SysUser::getEmail, email).count() > 0;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void resetPassword(String phone, String email, String code, String newPassword) {
+        // 校验验证码（手机号或邮箱二选一，验证码须已通过 verify-code / verify-email-code 校验）
+        String verifiedKey;
+        SysUser user;
+
+        if (phone != null && !phone.isBlank()) {
+            verifiedKey = CacheConstants.SMS_VERIFIED_PREFIX + phone;
+            user = this.getOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getPhone, phone));
+        } else if (email != null && !email.isBlank()) {
+            verifiedKey = CacheConstants.EMAIL_VERIFIED_PREFIX + email;
+            user = this.getOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getEmail, email));
+        } else {
+            throw new BizException("请提供手机号或邮箱");
+        }
+
+        if (user == null) {
+            throw new BizException("账号不存在");
+        }
+        if (user.getStatus() == 0) {
+            throw new BizException("账号已被禁用，请联系管理员");
+        }
+
+        // 检查验证标记
+        String mark = stringRedisTemplate.opsForValue().get(verifiedKey);
+        if (mark == null) {
+            throw new BizException("验证码未通过校验或已过期，请重新验证");
+        }
+
+        // 更新密码
+        user.setPassword(encodePassword(newPassword));
+        this.updateById(user);
+        stringRedisTemplate.delete(verifiedKey);
+
+        log.info("用户 {} 通过 {} 找回密码成功", user.getUsername(), phone != null ? "手机号" : "邮箱");
+    }
+
     /** 检查是否满足完善条件（实名+手机+邮箱），满足则标记 is_perfect=1 */
     private void checkAndUpdatePerfect(SysUser user) {
         boolean hasRealName = user.getIdCard() != null && !user.getIdCard().isBlank();

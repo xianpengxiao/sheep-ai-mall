@@ -92,4 +92,13 @@ public interface SysUserService extends IService<SysUser> {
 
     /** 发送原邮箱验证码（换绑时验证本人操作） */
     void sendOldEmailCode(Long userId);
+
+    /** 校验邮箱验证码（用于找回密码等场景） */
+    boolean verifyEmailCode(String email, String code);
+
+    /** 检查邮箱是否已被绑定 */
+    boolean checkEmailExists(String email);
+
+    /** 找回密码 — 免旧密码重置密码（验证码须先通过校验） */
+    void resetPassword(String phone, String email, String code, String newPassword);
 }

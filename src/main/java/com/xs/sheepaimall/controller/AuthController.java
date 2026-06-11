@@ -175,6 +175,25 @@ public class AuthController {
         return R.ok();
     }
 
+    @Operation(summary = "校验邮箱验证码", description = "校验通过后标记该邮箱已验证（有效期10分钟），用于找回密码")
+    @PostMapping("/verify-email-code")
+    public R<Boolean> verifyEmailCode(@RequestParam String email, @RequestParam String code) {
+        return R.ok(sysUserService.verifyEmailCode(email, code));
+    }
+
+    @Operation(summary = "检查邮箱是否已绑定")
+    @GetMapping("/check-email")
+    public R<Boolean> checkEmail(@RequestParam String email) {
+        return R.ok(sysUserService.checkEmailExists(email));
+    }
+
+    @Operation(summary = "找回密码", description = "通过手机号或邮箱验证后重置密码，无需旧密码。验证码须先调用 verify-code / verify-email-code 校验通过")
+    @PostMapping("/reset-password")
+    public R<Void> resetPassword(@Valid @RequestBody ResetPasswordDTO dto) {
+        sysUserService.resetPassword(dto.getPhone(), dto.getEmail(), dto.getCode(), dto.getNewPassword());
+        return R.ok();
+    }
+
     @Operation(summary = "发送原手机号验证码", description = "换绑手机号时向当前绑定手机号发送验证码，验证本人操作")
     @PostMapping("/send-old-phone-code")
     public R<Void> sendOldPhoneCode() {
