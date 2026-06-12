@@ -21,6 +21,7 @@ import com.xs.sheepaimall.security.UserContext;
 import com.xs.sheepaimall.service.MerchantDsrService;
 import com.xs.sheepaimall.service.MerchantService;
 import com.xs.sheepaimall.service.OrderItemService;
+import com.xs.sheepaimall.service.ProductSearchService;
 import com.xs.sheepaimall.service.SkuService;
 import com.xs.sheepaimall.service.SpuService;
 import com.xs.sheepaimall.util.OssUtil;
@@ -28,6 +29,7 @@ import com.xs.sheepaimall.util.SensitiveWordUtil;
 import com.xs.sheepaimall.vo.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -78,6 +80,10 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
     @Resource
     private MerchantDsrService merchantDsrService;
+
+    @org.springframework.context.annotation.Lazy
+    @Autowired(required = false)
+    private ProductSearchService productSearchService;
 
     @Resource
     private SensitiveWordUtil sensitiveWordUtil;
@@ -345,6 +351,10 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         }
 
         Merchant updated = this.getById(merchant.getId());
+        // 增量同步到 ES（商家信息变更后更新搜索索引）
+        if (productSearchService != null) {
+            productSearchService.syncMerchantToEs(merchant.getId());
+        }
         return toSimpleVO(updated);
     }
 
@@ -383,6 +393,10 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         }
 
         cacheHelper.evictSpuHotPage();
+        // 增量同步到 ES
+        if (productSearchService != null) {
+            productSearchService.syncSpuToEs(spu.getId());
+        }
         return spuService.getDetailById(spu.getId());
     }
 
@@ -432,6 +446,10 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
         cacheHelper.evictSpuDetail(id);
         cacheHelper.evictSpuHotPage();
+        // 增量同步到 ES
+        if (productSearchService != null) {
+            productSearchService.syncSpuToEs(spu.getId());
+        }
         return spuService.getDetailById(spu.getId());
     }
 
@@ -883,6 +901,10 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         int newStatus = (merchant.getShopStatus() == null || merchant.getShopStatus() == 0) ? 1 : 0;
         merchant.setShopStatus(newStatus);
         this.updateById(merchant);
+        // 增量同步到 ES（营业状态变更）
+        if (productSearchService != null) {
+            productSearchService.syncMerchantToEs(merchant.getId());
+        }
         log.info("商家营业状态切换 merchantId={}, newStatus={}", merchant.getId(), newStatus);
         return newStatus;
     }

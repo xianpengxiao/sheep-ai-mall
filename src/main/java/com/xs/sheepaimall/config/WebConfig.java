@@ -40,6 +40,7 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/spu/hot",                  // 热门商品（游客可浏览）
                         "/api/sku/spu/**",               // SPU下的SKU列表（游客可浏览）
                         "/api/search/product",           // 商品搜索（游客可浏览）
+                        "/api/search/merchant",          // 商家搜索（游客可浏览）
                         "/swagger-ui/**",                // Knife4j 文档
                         "/v3/api-docs/**",               // OpenAPI 文档
                         "/swagger-resources/**",

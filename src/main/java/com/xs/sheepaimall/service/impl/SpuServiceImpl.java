@@ -24,6 +24,7 @@ import com.xs.sheepaimall.mapper.MerchantMapper;
 import com.xs.sheepaimall.mapper.ProductReviewMapper;
 import com.xs.sheepaimall.mapper.SpuMapper;
 import com.xs.sheepaimall.service.CategoryService;
+import com.xs.sheepaimall.service.ProductSearchService;
 import com.xs.sheepaimall.service.SkuService;
 import com.xs.sheepaimall.service.SpuService;
 import com.xs.sheepaimall.security.UserContext;
@@ -31,6 +32,8 @@ import com.xs.sheepaimall.vo.SkuStockVO;
 import com.xs.sheepaimall.vo.SkuVO;
 import com.xs.sheepaimall.vo.SpuVO;
 import jakarta.annotation.Resource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -65,6 +68,10 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
 
     @Resource
     private MerchantDsrMapper merchantDsrMapper;
+
+    @Lazy
+    @Autowired(required = false)
+    private ProductSearchService productSearchService;
 
     @Override
     public Page<Spu> pageQuery(SpuQueryDTO dto) {
@@ -270,6 +277,10 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
 
         // 新增商品后清除缓存
         cacheHelper.evictSpuHotPage();
+        // 增量同步到 ES
+        if (productSearchService != null) {
+            productSearchService.syncSpuToEs(spu.getId());
+        }
         return getDetailById(spu.getId());
     }
 
@@ -306,6 +317,10 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
         // 更新后清除缓存
         cacheHelper.evictSpuDetail(dto.getId());
         cacheHelper.evictSpuHotPage();
+        // 增量同步到 ES
+        if (productSearchService != null) {
+            productSearchService.syncSpuToEs(spu.getId());
+        }
         return getDetailById(spu.getId());
     }
 
@@ -318,6 +333,10 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
         // 状态变更后清除缓存
         cacheHelper.evictSpuDetail(id);
         cacheHelper.evictSpuHotPage();
+        // 增量同步到 ES（上下架后需更新 ES 中的 status 字段）
+        if (ok && productSearchService != null) {
+            productSearchService.syncSpuToEs(id);
+        }
         return ok;
     }
 
@@ -353,6 +372,10 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
 
         cacheHelper.evictSpuDetail(spuId);
         cacheHelper.evictSpuHotPage();
+        // 增量同步到 ES（审核通过/驳回后更新 ES 中的 status/auditStatus）
+        if (productSearchService != null) {
+            productSearchService.syncSpuToEs(spuId);
+        }
     }
 
     @Override
