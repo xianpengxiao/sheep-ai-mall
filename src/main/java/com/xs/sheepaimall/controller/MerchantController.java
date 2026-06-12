@@ -10,6 +10,7 @@ import com.xs.sheepaimall.security.RequirePermission;
 import com.xs.sheepaimall.service.MerchantDsrService;
 import com.xs.sheepaimall.service.MerchantService;
 import com.xs.sheepaimall.service.ReviewService;
+import com.xs.sheepaimall.vo.CategoryVO;
 import com.xs.sheepaimall.vo.IncomeStatVO;
 import com.xs.sheepaimall.vo.MerchantApplyVO;
 import com.xs.sheepaimall.vo.MerchantDsrVO;
@@ -17,6 +18,8 @@ import com.xs.sheepaimall.vo.MerchantOrderVO;
 import com.xs.sheepaimall.vo.MerchantVO;
 import com.xs.sheepaimall.vo.ReviewVO;
 import com.xs.sheepaimall.vo.SpuVO;
+
+import java.util.List;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -58,6 +61,12 @@ public class MerchantController {
         return R.ok(merchantService.getMerchantDetail(id));
     }
 
+    @Operation(summary = "商家分类列表", description = "返回指定商家经营范围内的分类列表")
+    @GetMapping("/{id}/categories")
+    public R<List<CategoryVO>> merchantCategories(@Parameter(description = "商家ID") @PathVariable Long id) {
+        return R.ok(merchantService.getMerchantCategories(id));
+    }
+
     @Operation(summary = "店铺商品分页", description = "分页查询指定店铺的在售商品")
     @GetMapping("/{merId}/goods")
     public R<Page<Spu>> goods(
@@ -95,6 +104,13 @@ public class MerchantController {
     @RequirePermission("merchant:info:update")
     public R<MerchantVO> updateShop(@Valid @RequestBody MerchantUpdateDTO dto) {
         return R.ok(merchantService.submitInfoChange(dto));
+    }
+
+    @Operation(summary = "我的分类列表", description = "返回当前商家的经营范围分类列表")
+    @GetMapping("/categories")
+    @RequirePermission("merchant:info:update")
+    public R<List<CategoryVO>> myCategories() {
+        return R.ok(merchantService.getMerchantCategories(merchantService.getCurrentMerchantId()));
     }
 
     @Operation(summary = "新增商品")

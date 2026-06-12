@@ -42,7 +42,7 @@ public class MerchantUpdateDTO {
     @Schema(description = "食品经营许可证")
     private String foodLicense;
 
-    @Schema(description = "经营范围")
+    @Schema(description = "经营范围（分类ID，多个用逗号分隔，如 \"1,2,3\"）")
     private String businessScope;
 
     @Schema(description = "联系人姓名")

@@ -10,6 +10,8 @@ import com.xs.sheepaimall.entity.Merchant;
 import com.xs.sheepaimall.entity.Spu;
 import com.xs.sheepaimall.vo.*;
 
+import java.util.List;
+
 /**
  * 商家 Service
  */
@@ -86,6 +88,9 @@ public interface MerchantService extends IService<Merchant> {
 
     /** 获取当前登录用户对应的已开通商家ID（商家后台专用） */
     Long getCurrentMerchantId();
+
+    /** 获取商家经营范围内的分类列表 */
+    List<CategoryVO> getMerchantCategories(Long merchantId);
 
     // ========== 商家信息变更审核 ==========
 

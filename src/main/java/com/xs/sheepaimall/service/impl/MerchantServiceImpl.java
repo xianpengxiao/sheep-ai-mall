@@ -210,6 +210,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         }
         MerchantApplyVO vo = new MerchantApplyVO();
         BeanUtil.copyProperties(apply, vo);
+        vo.setBusinessScope(convertScopeIdsToNames(apply.getBusinessScope()));
         SysUser user = sysUserMapper.selectById(apply.getUserId());
         if (user != null) {
             vo.setUsername(user.getUsername());
@@ -372,6 +373,9 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
             spu.setImageList(JSONUtil.toJsonStr(dto.getImageList()));
         }
 
+        // 校验分类：存在且已启用，并匹配商家经营范围
+        validateCategory(spu.getCategoryId(), merchant.getBusinessScope());
+
         // 机审：检测敏感词/侵权/高风险类目，命中则标记
         String categoryName = "";
         try {
@@ -422,6 +426,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         if (dto.getImageList() != null) {
             spu.setImageList(JSONUtil.toJsonStr(dto.getImageList()));
         }
+        validateCategory(spu.getCategoryId(), merchant.getBusinessScope());
         spuService.updateById(spu);
 
         if (dto.getSkuList() != null) {
@@ -791,6 +796,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         List<MerchantApplyVO> voList = page.getRecords().stream().map(apply -> {
             MerchantApplyVO vo = new MerchantApplyVO();
             BeanUtil.copyProperties(apply, vo);
+            vo.setBusinessScope(convertScopeIdsToNames(apply.getBusinessScope()));
             // 查询申请人用户名
             if (apply.getUserId() != null) {
                 SysUser user = sysUserMapper.selectById(apply.getUserId());
@@ -976,6 +982,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     private MerchantInfoChangeVO toInfoChangeVO(MerchantInfoChange change) {
         MerchantInfoChangeVO vo = new MerchantInfoChangeVO();
         BeanUtil.copyProperties(change, vo);
+        vo.setBusinessScope(convertScopeIdsToNames(change.getBusinessScope()));
         Merchant merchant = this.getById(change.getMerchantId());
         if (merchant != null) {
             vo.setShopName(merchant.getShopName());
@@ -987,9 +994,22 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
     // ==================== 内部方法 ====================
 
+    /** 将逗号分隔的分类ID串转换为分类名称串 */
+    private String convertScopeIdsToNames(String businessScope) {
+        if (StrUtil.isBlank(businessScope)) return businessScope;
+        List<Long> ids = Arrays.stream(businessScope.split(","))
+                .map(String::trim).filter(StrUtil::isNotBlank)
+                .map(s -> { try { return Long.parseLong(s); } catch (NumberFormatException e) { return null; }})
+                .filter(Objects::nonNull).collect(Collectors.toList());
+        if (ids.isEmpty()) return businessScope;
+        List<Category> categories = categoryService.listByIds(ids);
+        return categories.stream().map(Category::getName).filter(Objects::nonNull).collect(Collectors.joining(","));
+    }
+
     private MerchantVO toSimpleVO(Merchant merchant) {
         MerchantVO vo = new MerchantVO();
         BeanUtil.copyProperties(merchant, vo);
+        vo.setBusinessScope(convertScopeIdsToNames(merchant.getBusinessScope()));
         // 注入 DSR 评分
         MerchantDsrVO dsr = merchantDsrService.getLatestDsr(merchant.getId());
         if (dsr != null) {
@@ -1031,6 +1051,54 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** 校验分类：存在、已启用、且在商家经营范围内 */
+    private void validateCategory(Long categoryId, String businessScope) {
+        Category cat = categoryService.getById(categoryId);
+        if (cat == null) throw new BizException("所选分类不存在");
+        if (cat.getStatus() == null || cat.getStatus() == 0) throw new BizException("所选分类未启用");
+
+        if (StrUtil.isNotBlank(businessScope)) {
+            List<Long> allowedIds = Arrays.stream(businessScope.split(","))
+                    .map(String::trim)
+                    .filter(StrUtil::isNotBlank)
+                    .map(s -> {
+                        try { return Long.parseLong(s); } catch (NumberFormatException e) { return null; }
+                    })
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+            if (!allowedIds.isEmpty() && !allowedIds.contains(categoryId)) {
+                throw new BizException("该分类不在您的经营范围内");
+            }
+        }
+    }
+
+    @Override
+    public List<CategoryVO> getMerchantCategories(Long merchantId) {
+        Merchant merchant = this.getById(merchantId);
+        if (merchant == null) return Collections.emptyList();
+
+        String scope = merchant.getBusinessScope();
+        if (StrUtil.isBlank(scope)) return Collections.emptyList();
+
+        List<Long> ids = Arrays.stream(scope.split(","))
+                .map(String::trim)
+                .filter(StrUtil::isNotBlank)
+                .map(s -> {
+                    try { return Long.parseLong(s); } catch (NumberFormatException e) { return null; }
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        if (ids.isEmpty()) return Collections.emptyList();
+
+        List<Category> categories = categoryService.listByIds(ids);
+        return categories.stream().map(cat -> {
+            CategoryVO vo = new CategoryVO();
+            BeanUtil.copyProperties(cat, vo);
+            return vo;
+        }).collect(Collectors.toList());
     }
 
     private String getStatusText(Integer status) {

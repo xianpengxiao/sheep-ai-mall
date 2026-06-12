@@ -17,7 +17,7 @@ public class MerchantApplyDTO {
     @Schema(description = "营业执照图片URL")
     private String businessLicense;
 
-    @Schema(description = "经营范围")
+    @Schema(description = "经营范围（分类ID，多个用逗号分隔，如 \"1,2,3\"）")
     private String businessScope;
 
     @NotBlank(message = "联系人不能为空")

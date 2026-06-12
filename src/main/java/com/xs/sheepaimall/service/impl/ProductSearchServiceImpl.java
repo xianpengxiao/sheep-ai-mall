@@ -37,9 +37,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /** 商品搜索 Service 实现 — Elasticsearch */
@@ -307,6 +305,19 @@ public class ProductSearchServiceImpl implements ProductSearchService {
                 if (doc == null) continue;
                 MerchantSearchVO vo = new MerchantSearchVO();
                 BeanUtil.copyProperties(doc, vo);
+                // 经营范围ID → 名称
+                if (StrUtil.isNotBlank(doc.getBusinessScope())) {
+                    List<Long> ids = Arrays.stream(doc.getBusinessScope().split(","))
+                            .map(String::trim).filter(StrUtil::isNotBlank)
+                            .map(s -> { try { return Long.parseLong(s); } catch (NumberFormatException e) { return null; }})
+                            .filter(Objects::nonNull).collect(Collectors.toList());
+                    if (!ids.isEmpty()) {
+                        String names = categoryService.listByIds(ids).stream()
+                                .map(Category::getName).filter(Objects::nonNull)
+                                .collect(Collectors.joining(","));
+                        if (StrUtil.isNotBlank(names)) vo.setBusinessScope(names);
+                    }
+                }
                 // 提取高亮
                 if (hit.highlight() != null) {
                     List<String> nameHL = hit.highlight().get("shopName");
