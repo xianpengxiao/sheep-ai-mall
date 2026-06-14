@@ -23,6 +23,8 @@ import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -69,6 +71,10 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
 
     @Resource
     private ProductReviewMapper productReviewMapper;
+
+    @Lazy
+    @Autowired
+    private FundService fundService;
 
     // ==================== 下单 ====================
 
@@ -307,6 +313,13 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
             productReviewMapper.insert(review);
         }
         log.info("订单已确认收货 orderId={}, userId={}", orderId, userId);
+
+        // 触发分佣结算（异步不会阻断收货流程，但这里同步处理保证一致性）
+        try {
+            fundService.settleOrderCommission(orderId);
+        } catch (Exception e) {
+            log.error("订单分佣结算异常 orderId={}", orderId, e);
+        }
     }
 
     // ==================== 支付状态更新（支付回调专用） ====================

@@ -7,6 +7,7 @@ import com.xs.sheepaimall.common.AccountStatusException;
 import com.xs.sheepaimall.common.BizException;
 import com.xs.sheepaimall.common.CacheConstants;
 import com.xs.sheepaimall.dto.*;
+import com.xs.sheepaimall.security.UserContext;
 import com.xs.sheepaimall.util.DesensitizeUtil;
 import com.xs.sheepaimall.util.EmailUtil;
 import com.xs.sheepaimall.util.IdCardVerifyUtil;
@@ -258,6 +259,17 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         if (status != 0 && status != 1) {
             throw new BizException("状态值不正确：0=禁用 1=正常");
         }
+        // 不能操作自己
+        Long currentUserId = UserContext.getUserId();
+        if (currentUserId != null && currentUserId.equals(userId)) {
+            throw new BizException("不能操作自己的账号");
+        }
+        // 权限层级校验：操作者不能封禁权限高于自己的账号
+        Integer currentSort = sysUserRoleMapper.selectMinSortOrderByUserId(currentUserId);
+        Integer targetSort = sysUserRoleMapper.selectMinSortOrderByUserId(userId);
+        if (currentSort != null && targetSort != null && targetSort < currentSort) {
+            throw new BizException("无权操作权限高于自己的账号");
+        }
         user.setStatus(status);
         this.updateById(user);
         log.info("管理员操作：用户 {} 状态变更为 {}", userId, status);
@@ -274,6 +286,26 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         SysUser user = this.getById(userId);
         if (user == null) {
             throw new BizException("用户不存在");
+        }
+
+        // 不能操作自己
+        Long currentUserId = UserContext.getUserId();
+        if (currentUserId != null && currentUserId.equals(userId)) {
+            throw new BizException("不能修改自己的角色");
+        }
+
+        // 权限层级校验：不能分配权限高于自己的角色
+        if (roleIds != null && !roleIds.isEmpty()) {
+            Integer currentSort = sysUserRoleMapper.selectMinSortOrderByUserId(currentUserId);
+            // 查询要分配的角色 sortOrder 列表
+            List<Integer> targetSorts = sysRoleMapper.selectSortOrdersByRoleIds(roleIds);
+            if (currentSort != null && targetSorts != null) {
+                for (Integer ts : targetSorts) {
+                    if (ts != null && ts < currentSort) {
+                        throw new BizException("不能分配权限高于自己的角色");
+                    }
+                }
+            }
         }
 
         // 1. 删除用户所有现有角色

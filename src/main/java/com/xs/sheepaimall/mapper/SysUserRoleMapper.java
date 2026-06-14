@@ -36,4 +36,12 @@ public interface SysUserRoleMapper extends BaseMapper<SysUserRole> {
      */
     @Delete("DELETE FROM sys_user_role WHERE user_id = #{userId}")
     int deleteByUserId(@Param("userId") Long userId);
+
+    /**
+     * 查询用户角色的最小排序值（值越小权限越高）
+     */
+    @Select("SELECT MIN(r.sort_order) FROM sys_user_role ur " +
+            "INNER JOIN sys_role r ON ur.role_id = r.id AND r.status = 1 " +
+            "WHERE ur.user_id = #{userId}")
+    Integer selectMinSortOrderByUserId(@Param("userId") Long userId);
 }

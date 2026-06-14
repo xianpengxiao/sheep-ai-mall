@@ -18,6 +18,7 @@ import com.xs.sheepaimall.mapper.OrderInfoMapper;
 import com.xs.sheepaimall.mapper.SysUserMapper;
 import com.xs.sheepaimall.mapper.SysUserRoleMapper;
 import com.xs.sheepaimall.security.UserContext;
+import com.xs.sheepaimall.service.FundService;
 import com.xs.sheepaimall.service.MerchantDsrService;
 import com.xs.sheepaimall.service.MerchantService;
 import com.xs.sheepaimall.service.OrderItemService;
@@ -80,6 +81,10 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
     @Resource
     private MerchantDsrService merchantDsrService;
+
+    @Resource
+    @org.springframework.context.annotation.Lazy
+    private FundService fundService;
 
     @org.springframework.context.annotation.Lazy
     @Autowired(required = false)
@@ -751,6 +756,12 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         stat.setMonthOrderCount(monthCount);
         stat.setTotalAmount(totalAmount);
         stat.setTotalOrderCount(paidOrders.size());
+        // 可提现余额
+        try {
+            stat.setAvailableBalance(fundService.getCurrentBalance(merchant.getId()));
+        } catch (Exception e) {
+            stat.setAvailableBalance(BigDecimal.ZERO);
+        }
         return stat;
     }
 

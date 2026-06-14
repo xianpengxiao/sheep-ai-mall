@@ -27,4 +27,7 @@ public class IncomeStatVO {
 
     @Schema(description = "累计订单数")
     private Integer totalOrderCount;
+
+    @Schema(description = "可提现余额")
+    private BigDecimal availableBalance;
 }
