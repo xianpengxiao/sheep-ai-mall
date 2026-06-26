@@ -4,12 +4,12 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.xs.sheepaimall.common.BizException;
 import com.xs.sheepaimall.config.IdCardVerifyProperties;
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 身份证实名认证工具
@@ -22,7 +22,7 @@ import java.util.Map;
 @Component
 public class IdCardVerifyUtil {
 
-    @Resource
+    @Autowired
     private IdCardVerifyProperties properties;
 
     private final RestTemplate restTemplate = new RestTemplate();

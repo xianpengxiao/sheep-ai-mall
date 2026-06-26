@@ -12,18 +12,19 @@ import com.xs.sheepaimall.vo.MerchantVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "平台管理-商家", description = "平台管理员商家管理")
+import org.springframework.web.bind.annotation.*;
+import org.springframework.beans.factory.annotation.Autowired;
+@Tag(name = "管理员管理商家接口", description = "商家管理")
 @Validated
 @RestController
 @RequestMapping("/api/admin/merchant")
 public class AdminMerchantController {
 
-    @Resource
+    @Autowired
     private MerchantService merchantService;
 
     @Operation(summary = "全量商家列表", description = "支持按状态筛选和关键词搜索")

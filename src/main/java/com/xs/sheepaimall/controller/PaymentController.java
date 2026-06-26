@@ -6,7 +6,6 @@ import com.xs.sheepaimall.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +13,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 支付接口 —— 微信支付 API v3
@@ -26,7 +26,7 @@ public class PaymentController {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentController.class);
 
-    @Resource
+    @Autowired
     private PaymentService paymentService;
 
     @Operation(summary = "创建JSAPI支付", description = "返回前端拉起微信支付所需参数")

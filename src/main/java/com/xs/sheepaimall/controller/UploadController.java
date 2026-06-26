@@ -7,12 +7,12 @@ import com.xs.sheepaimall.util.OssUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
+import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 统一图片上传接口 — 全场景复用（用户头像、商品图片、商家资质）
@@ -27,7 +27,7 @@ public class UploadController {
     private static final String PERM_GOODS = "merchant:goods:manage";
     private static final String PERM_CERT = "merchant:info:update";
 
-    @Resource
+    @Autowired
     private OssUtil ossUtil;
 
     @Operation(summary = "上传图片",

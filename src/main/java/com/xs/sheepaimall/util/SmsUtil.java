@@ -8,13 +8,13 @@ import com.tencentcloudapi.sms.v20210111.SmsClient;
 import com.tencentcloudapi.sms.v20210111.models.SendSmsRequest;
 import com.tencentcloudapi.sms.v20210111.models.SendSmsResponse;
 import com.xs.sheepaimall.config.SmsProperties;
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-/**
- * 腾讯云短信工具类
+import org.springframework.util.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+ /* 腾讯云短信工具类
  * <p>
  * 开发阶段（secretId 为空）仅打印验证码到日志；
  * 上线前在 application-dev.yml 中填入 tencent.sms 真实密钥后自动启用真实发送。
@@ -24,7 +24,7 @@ import org.springframework.util.StringUtils;
 @Component
 public class SmsUtil {
 
-    @Resource
+    @Autowired
     private SmsProperties smsProperties;
 
     /**

@@ -8,17 +8,17 @@ import com.xs.sheepaimall.vo.ReviewVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-
+import org.springframework.validation.annotation.Validated;
+import org.springframework.beans.factory.annotation.Autowired;
 @Tag(name = "平台管理-评价", description = "平台管理员评价管理")
 @Validated
 @RestController
 @RequestMapping("/api/admin/review")
 public class AdminReviewController {
 
-    @Resource
+    @Autowired
     private ReviewService reviewService;
 
     @Operation(summary = "评价列表分页", description = "支持关键词、评分、显示状态、时间范围筛选")

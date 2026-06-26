@@ -11,13 +11,13 @@ import com.xs.sheepaimall.vo.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Tag(name = "平台管理-资金", description = "平台资金管理：结算账户、佣金规则、分佣明细、提现审核、资金流水、对账报表")
 @Validated
@@ -25,7 +25,7 @@ import java.time.LocalDate;
 @RequestMapping("/api/admin/fund")
 public class AdminFundController {
 
-    @Resource
+    @Autowired
     private FundService fundService;
 
     // ==================== 1. 结算账户管理 ====================

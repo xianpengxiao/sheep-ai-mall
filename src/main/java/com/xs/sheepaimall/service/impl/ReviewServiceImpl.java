@@ -14,37 +14,37 @@ import com.xs.sheepaimall.mapper.ProductReviewMapper;
 import com.xs.sheepaimall.security.UserContext;
 import com.xs.sheepaimall.service.*;
 import com.xs.sheepaimall.vo.ReviewVO;
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Slf4j
 @Service
 public class ReviewServiceImpl extends ServiceImpl<ProductReviewMapper, ProductReview> implements ReviewService {
 
-    @Resource
+    @Autowired
     private OrderService orderService;
 
-    @Resource
+    @Autowired
     private OrderItemService orderItemService;
 
-    @Resource
+    @Autowired
     private SpuService spuService;
 
-    @Resource
+    @Autowired
     private SkuService skuService;
 
-    @Resource
+    @Autowired
     private SysUserService sysUserService;
 
-    @Resource
+    @Autowired
     private MerchantService merchantService;
 
-    @Resource
+    @Autowired
     private ProductReviewMapper productReviewMapper;
 
     @Override

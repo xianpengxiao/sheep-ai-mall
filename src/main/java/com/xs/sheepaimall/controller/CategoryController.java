@@ -8,7 +8,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -16,6 +15,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Tag(name = "商品分类", description = "商品分类树查询、增删改查")
 @Validated
@@ -23,7 +23,7 @@ import java.util.List;
 @RequestMapping("/api/category")
 public class CategoryController {
 
-    @Resource
+    @Autowired
     private CategoryService categoryService;
 
     @Operation(summary = "查询分类树", description = "返回完整分类树结构")

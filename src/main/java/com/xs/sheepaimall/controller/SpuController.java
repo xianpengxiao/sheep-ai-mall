@@ -12,18 +12,19 @@ import com.xs.sheepaimall.vo.SpuVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "商品SPU", description = "商品标准产品单元管理")
+import org.springframework.web.bind.annotation.*;
+import org.springframework.beans.factory.annotation.Autowired;
+@Tag(name = "商品spu")
 @Validated
 @RestController
 @RequestMapping("/api/spu")
 public class SpuController {
 
-    @Resource
+    @Autowired
     private SpuService spuService;
 
     @Operation(summary = "分页查询SPU")

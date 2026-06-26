@@ -7,12 +7,12 @@ import com.xs.sheepaimall.vo.CartVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-
+import org.springframework.validation.annotation.Validated;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 购物车接口 —— Redis Hash 缓存 + MySQL 持久化双写
@@ -23,7 +23,7 @@ import java.util.List;
 @RequestMapping("/api/cart")
 public class CartController {
 
-    @Resource
+    @Autowired
     private CartService cartService;
 
     @Operation(summary = "加入购物车", description = "已存在同SKU则累加数量")

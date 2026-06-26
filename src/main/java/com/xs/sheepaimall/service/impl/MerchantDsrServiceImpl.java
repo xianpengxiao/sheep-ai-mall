@@ -9,7 +9,6 @@ import com.xs.sheepaimall.mapper.MerchantDsrMapper;
 import com.xs.sheepaimall.mapper.MerchantMapper;
 import com.xs.sheepaimall.service.MerchantDsrService;
 import com.xs.sheepaimall.vo.MerchantDsrVO;
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -20,18 +19,19 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Slf4j
 @Service
 public class MerchantDsrServiceImpl extends ServiceImpl<MerchantDsrMapper, MerchantDsr> implements MerchantDsrService {
 
-    @Resource
+    @Autowired
     private MerchantDsrMapper merchantDsrMapper;
 
-    @Resource
+    @Autowired
     private MerchantMapper merchantMapper;
 
-    @Resource
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Override

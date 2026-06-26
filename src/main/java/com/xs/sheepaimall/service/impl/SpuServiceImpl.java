@@ -31,7 +31,6 @@ import com.xs.sheepaimall.security.UserContext;
 import com.xs.sheepaimall.vo.SkuStockVO;
 import com.xs.sheepaimall.vo.SkuVO;
 import com.xs.sheepaimall.vo.SpuVO;
-import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -51,22 +50,22 @@ public class SpuServiceImpl extends ServiceImpl<SpuMapper, Spu> implements SpuSe
     /** SPU 详情缓存版本号，VO 结构变化时递增以强制刷新旧缓存 */
     private static final String SPU_CACHE_VERSION = "v2";
 
-    @Resource
+    @Autowired
     private SkuService skuService;
 
-    @Resource
+    @Autowired
     private CategoryService categoryService;
 
-    @Resource
+    @Autowired
     private CacheHelper cacheHelper;
 
-    @Resource
+    @Autowired
     private ProductReviewMapper productReviewMapper;
 
-    @Resource
+    @Autowired
     private MerchantMapper merchantMapper;
 
-    @Resource
+    @Autowired
     private MerchantDsrMapper merchantDsrMapper;
 
     @Lazy

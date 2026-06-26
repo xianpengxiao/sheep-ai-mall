@@ -11,7 +11,6 @@ import com.xs.sheepaimall.entity.Spu;
 import com.xs.sheepaimall.service.OrderService;
 import com.xs.sheepaimall.service.SkuService;
 import com.xs.sheepaimall.service.SpuService;
-import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.Message;
@@ -24,6 +23,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 库存操作消费者 —— 处理库存锁定（下单）和库存释放（取消）消息。
@@ -40,19 +40,19 @@ public class StockLockConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(StockLockConsumer.class);
 
-    @Resource
+    @Autowired
     private SkuService skuService;
 
-    @Resource
+    @Autowired
     private SpuService spuService;
 
-    @Resource
+    @Autowired
     private OrderService orderService;
 
-    @Resource
+    @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
-    @Resource
+    @Autowired
     private RabbitTemplate rabbitTemplate;
 
     /** Redis 锁定状态 TTL，取支付超时的 2 倍作为安全余量 */

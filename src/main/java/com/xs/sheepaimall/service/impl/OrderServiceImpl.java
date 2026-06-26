@@ -19,7 +19,6 @@ import com.xs.sheepaimall.security.UserContext;
 import com.xs.sheepaimall.service.*;
 import com.xs.sheepaimall.vo.OrderInfoVO;
 import com.xs.sheepaimall.vo.OrderItemVO;
-import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
@@ -51,25 +50,25 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
 
     private static final Logger log = LoggerFactory.getLogger(OrderServiceImpl.class);
 
-    @Resource
+    @Autowired
     private OrderItemService orderItemService;
 
-    @Resource
+    @Autowired
     private SkuService skuService;
 
-    @Resource
+    @Autowired
     private SpuService spuService;
 
-    @Resource
+    @Autowired
     private CartService cartService;
 
-    @Resource
+    @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
-    @Resource
+    @Autowired
     private RabbitTemplate rabbitTemplate;
 
-    @Resource
+    @Autowired
     private ProductReviewMapper productReviewMapper;
 
     @Lazy

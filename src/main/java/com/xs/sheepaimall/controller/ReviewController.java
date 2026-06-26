@@ -9,18 +9,18 @@ import com.xs.sheepaimall.vo.ReviewVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-
+import org.springframework.validation.annotation.Validated;
+import org.springframework.beans.factory.annotation.Autowired;
 @Tag(name = "商品评价", description = "买家评价 + 平台管理")
 @Validated
 @RestController
 @RequestMapping("/api/review")
 public class ReviewController {
 
-    @Resource
+    @Autowired
     private ReviewService reviewService;
 
     @Operation(summary = "提交评价", description = "需已支付的订单，每条订单明细仅可评价一次")

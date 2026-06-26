@@ -8,12 +8,12 @@ import com.xs.sheepaimall.vo.ShippingAddressVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /** 收货地址接口 */
 @Tag(name = "收货地址", description = "收货地址增删改查、设置默认")
@@ -22,7 +22,7 @@ import java.util.List;
 @RequestMapping("/api/address")
 public class ShippingAddressController {
 
-    @Resource
+    @Autowired
     private ShippingAddressService addressService;
 
     @Operation(summary = "添加收货地址")

@@ -19,11 +19,10 @@ import com.xs.sheepaimall.service.FundService;
 import com.xs.sheepaimall.service.MerchantService;
 import com.xs.sheepaimall.service.SpuService;
 import com.xs.sheepaimall.vo.*;
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -33,6 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Slf4j
 @Service
@@ -41,34 +41,34 @@ public class FundServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow> imple
     // 提现手续费率（暂定固定 0.5%）
     private static final BigDecimal WITHDRAW_FEE_RATE = new BigDecimal("0.005");
 
-    @Resource
+    @Autowired
     private MerchantSettlementAccountMapper settlementAccountMapper;
 
-    @Resource
+    @Autowired
     private CommissionConfigMapper commissionConfigMapper;
 
-    @Resource
+    @Autowired
     private OrderCommissionLogMapper orderCommissionLogMapper;
 
-    @Resource
+    @Autowired
     private MerchantWithdrawMapper merchantWithdrawMapper;
 
-    @Resource
+    @Autowired
     private OperLogMapper operLogMapper;
 
-    @Resource
+    @Autowired
     private MerchantService merchantService;
 
-    @Resource
+    @Autowired
     private SpuService spuService;
 
-    @Resource
+    @Autowired
     private CategoryService categoryService;
 
-    @Resource
+    @Autowired
     private OrderItemMapper orderItemMapper;
 
-    @Resource
+    @Autowired
     private OrderInfoMapper orderInfoMapper;
 
     // ==================== 工具方法 ====================

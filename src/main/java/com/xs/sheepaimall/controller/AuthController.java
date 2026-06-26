@@ -13,11 +13,11 @@ import com.xs.sheepaimall.vo.SecurityProfileVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-
+import org.springframework.validation.annotation.Validated;
+import org.springframework.beans.factory.annotation.Autowired;
 /**
  * 认证接口：登录、退出登录、注册、修改密码/头像、获取当前用户信息
  */
@@ -27,10 +27,10 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    @Resource
+    @Autowired
     private SysUserService sysUserService;
 
-    @Resource
+    @Autowired
     private OssUtil ossUtil;
 
     @Operation(summary = "账号密码登录")

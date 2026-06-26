@@ -7,11 +7,11 @@ import com.xs.sheepaimall.service.SysUserService;
 import com.xs.sheepaimall.vo.UserProfileVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-
+import org.springframework.validation.annotation.Validated;
+import org.springframework.beans.factory.annotation.Autowired;
 /**
  * 用户资料管理
  */
@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/profile")
 public class ProfileController {
 
-    @Resource
+    @Autowired
     private SysUserService sysUserService;
 
     @Operation(summary = "获取用户资料", description = "获取当前登录用户的完整资料（不含密码）")

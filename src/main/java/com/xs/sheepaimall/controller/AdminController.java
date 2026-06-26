@@ -15,12 +15,12 @@ import com.xs.sheepaimall.vo.UserVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 管理员接口：用户管理、角色管理、权限分配
@@ -30,10 +30,10 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/admin")
 public class AdminController {
 
-    @Resource
+    @Autowired
     private SysUserService sysUserService;
 
-    @Resource
+    @Autowired
     private com.xs.sheepaimall.service.SpuService spuService;
 
     // ==================== 用户管理 ====================

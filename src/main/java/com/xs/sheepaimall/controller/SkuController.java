@@ -8,7 +8,6 @@ import com.xs.sheepaimall.service.SkuService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import cn.hutool.json.JSONUtil;
 
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Tag(name = "商品SKU", description = "商品库存量单位管理")
 @Validated
@@ -23,7 +23,7 @@ import java.util.List;
 @RequestMapping("/api/sku")
 public class SkuController {
 
-    @Resource
+    @Autowired
     private SkuService skuService;
 
     @Operation(summary = "根据SPU ID查询SKU列表")

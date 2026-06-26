@@ -8,16 +8,16 @@ import com.xs.sheepaimall.common.CacheHelper;
 import com.xs.sheepaimall.entity.Sku;
 import com.xs.sheepaimall.mapper.SkuMapper;
 import com.xs.sheepaimall.service.SkuService;
-import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.stereotype.Service;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class SkuServiceImpl extends ServiceImpl<SkuMapper, Sku> implements SkuService {
 
-    @Resource
+    @Autowired
     private CacheHelper cacheHelper;
 
     @Override

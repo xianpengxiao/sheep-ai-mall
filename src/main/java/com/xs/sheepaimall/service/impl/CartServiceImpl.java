@@ -12,7 +12,6 @@ import com.xs.sheepaimall.service.CartService;
 import com.xs.sheepaimall.service.SkuService;
 import com.xs.sheepaimall.service.SpuService;
 import com.xs.sheepaimall.vo.CartVO;
-import jakarta.annotation.Resource;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -21,9 +20,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-
+import org.springframework.data.redis.core.StringRedisTemplate;
 import java.util.*;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 购物车 Service —— Redis Hash 缓存 + MySQL 持久化双写。
@@ -41,13 +41,13 @@ public class CartServiceImpl extends ServiceImpl<CartMapper, Cart> implements Ca
 
     private static final String CART_KEY_PREFIX = "cart::";
 
-    @Resource
+    @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
-    @Resource
+    @Autowired
     private SpuService spuService;
 
-    @Resource
+    @Autowired
     private SkuService skuService;
 
     // ==================== 加入购物车 ====================

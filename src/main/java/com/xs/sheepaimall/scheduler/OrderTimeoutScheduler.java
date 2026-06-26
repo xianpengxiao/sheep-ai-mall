@@ -11,7 +11,6 @@ import com.xs.sheepaimall.service.OrderItemService;
 import com.xs.sheepaimall.service.OrderService;
 import com.xs.sheepaimall.service.SkuService;
 import com.xs.sheepaimall.service.SpuService;
-import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +20,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 订单超时自动取消定时任务 —— 扫描 status=0 且超过支付时限的订单，自动取消并释放库存。
@@ -38,19 +38,19 @@ public class OrderTimeoutScheduler {
     @Value("${sheep.mall.order.pay-timeout-minutes:15}")
     private int payTimeoutMinutes;
 
-    @Resource
+    @Autowired
     private OrderService orderService;
 
-    @Resource
+    @Autowired
     private OrderItemService orderItemService;
 
-    @Resource
+    @Autowired
     private SkuService skuService;
 
-    @Resource
+    @Autowired
     private SpuService spuService;
 
-    @Resource
+    @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
     /** 每 30 秒扫描一次超时未支付订单 */

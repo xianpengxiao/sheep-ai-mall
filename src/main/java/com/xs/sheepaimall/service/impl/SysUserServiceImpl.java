@@ -1,5 +1,6 @@
 package com.xs.sheepaimall.service.impl;
 
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -27,7 +28,6 @@ import com.xs.sheepaimall.vo.UserProfileVO;
 import com.xs.sheepaimall.util.SensitiveWordUtil;
 import com.xs.sheepaimall.util.SmsUtil;
 import io.jsonwebtoken.Claims;
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -35,12 +35,13 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-
+import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 系统用户 Service 实现
@@ -52,31 +53,31 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     /** 默认新注册用户分配的角色ID（3 = ROLE_VIEWER 只读用户） */
     private static final long DEFAULT_ROLE_ID = 3L;
 
-    @Resource
+    @Autowired
     private SysUserRoleMapper sysUserRoleMapper;
 
-    @Resource
+    @Autowired
     private SysRolePermissionMapper sysRolePermissionMapper;
 
-    @Resource
+    @Autowired
     private SysRoleMapper sysRoleMapper;
 
-    @Resource
+    @Autowired
     private JwtUtil jwtUtil;
 
-    @Resource
+    @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
-    @Resource
+    @Autowired
     private SmsUtil smsUtil;
 
-    @Resource
+    @Autowired
     private EmailUtil emailUtil;
 
-    @Resource
+    @Autowired
     private IdCardVerifyUtil idCardVerifyUtil;
 
-    @Resource
+    @Autowired
     private SensitiveWordUtil sensitiveWordUtil;
 
     @Value("${sheep.jwt.expiration}")
@@ -151,11 +152,23 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     @Override
     @Transactional(rollbackFor = Exception.class)
     public SysUser register(RegisterDTO dto) {
-        // 校验手机验证码
-        String verifiedKey = CacheConstants.SMS_VERIFIED_PREFIX + dto.getPhone();
-        String verified = stringRedisTemplate.opsForValue().get(verifiedKey);
-        if (!"1".equals(verified)) {
-            throw new BizException("手机号未通过验证码验证");
+        // 校验验证码：手机注册走短信验证码，邮箱注册走邮箱验证码
+        if (StrUtil.isNotBlank(dto.getPhone())) {
+            String verifiedKey = CacheConstants.SMS_VERIFIED_PREFIX + dto.getPhone();
+            String verified = stringRedisTemplate.opsForValue().get(verifiedKey);
+            if (!"1".equals(verified)) {
+                throw new BizException("手机号未通过验证码验证");
+            }
+            stringRedisTemplate.delete(verifiedKey);
+        } else if (StrUtil.isNotBlank(dto.getEmail())) {
+            String verifiedKey = CacheConstants.EMAIL_VERIFIED_PREFIX + dto.getEmail();
+            String verified = stringRedisTemplate.opsForValue().get(verifiedKey);
+            if (!"1".equals(verified)) {
+                throw new BizException("邮箱未通过验证码验证");
+            }
+            stringRedisTemplate.delete(verifiedKey);
+        } else {
+            throw new BizException("手机号或邮箱至少填一项，且需通过验证码验证");
         }
 
         SysUser existing = this.getOne(new LambdaQueryWrapper<SysUser>()
@@ -164,8 +177,23 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
             throw new BizException("账号已存在：" + dto.getUsername());
         }
 
-        // 清除已验证标记
-        stringRedisTemplate.delete(verifiedKey);
+        // 校验邮箱唯一性
+        if (StrUtil.isNotBlank(dto.getEmail())) {
+            SysUser emailUser = this.getOne(new LambdaQueryWrapper<SysUser>()
+                    .eq(SysUser::getEmail, dto.getEmail()));
+            if (emailUser != null) {
+                throw new BizException("该邮箱已被其他账号绑定");
+            }
+        }
+
+        // 校验手机号唯一性
+        if (StrUtil.isNotBlank(dto.getPhone())) {
+            SysUser phoneUser = this.getOne(new LambdaQueryWrapper<SysUser>()
+                    .eq(SysUser::getPhone, dto.getPhone()));
+            if (phoneUser != null) {
+                throw new BizException("该手机号已被其他账号绑定");
+            }
+        }
 
         SysUser user = new SysUser();
         user.setUsername(dto.getUsername());

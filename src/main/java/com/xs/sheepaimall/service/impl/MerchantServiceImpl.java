@@ -28,7 +28,6 @@ import com.xs.sheepaimall.service.SpuService;
 import com.xs.sheepaimall.util.OssUtil;
 import com.xs.sheepaimall.util.SensitiveWordUtil;
 import com.xs.sheepaimall.vo.*;
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -48,41 +47,41 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     /** 商家角色ID（对应 sys_role.id=4, ROLE_MERCHANT） */
     private static final long MERCHANT_ROLE_ID = 4L;
 
-    @Resource
+    @Autowired
     private MerchantApplyMapper merchantApplyMapper;
 
-    @Resource
+    @Autowired
     private OrderInfoMapper orderInfoMapper;
 
-    @Resource
+    @Autowired
     @org.springframework.context.annotation.Lazy
     private SpuService spuService;
 
-    @Resource
+    @Autowired
     private OssUtil ossUtil;
 
-    @Resource
+    @Autowired
     private SkuService skuService;
 
-    @Resource
+    @Autowired
     private MerchantInfoChangeMapper merchantInfoChangeMapper;
 
-    @Resource
+    @Autowired
     private OrderItemService orderItemService;
 
-    @Resource
+    @Autowired
     private SysUserMapper sysUserMapper;
 
-    @Resource
+    @Autowired
     private SysUserRoleMapper sysUserRoleMapper;
 
-    @Resource
+    @Autowired
     private CacheHelper cacheHelper;
 
-    @Resource
+    @Autowired
     private MerchantDsrService merchantDsrService;
 
-    @Resource
+    @Autowired
     @org.springframework.context.annotation.Lazy
     private FundService fundService;
 
@@ -90,10 +89,10 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     @Autowired(required = false)
     private ProductSearchService productSearchService;
 
-    @Resource
+    @Autowired
     private SensitiveWordUtil sensitiveWordUtil;
 
-    @Resource
+    @Autowired
     private com.xs.sheepaimall.service.CategoryService categoryService;
 
     // ==================== 买家端 ====================

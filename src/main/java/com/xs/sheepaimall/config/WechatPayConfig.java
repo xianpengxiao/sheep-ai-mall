@@ -4,7 +4,6 @@ import com.wechat.pay.java.core.RSAAutoCertificateConfig;
 import com.wechat.pay.java.core.notification.NotificationConfig;
 import com.wechat.pay.java.service.payments.jsapi.JsapiService;
 import com.wechat.pay.java.service.payments.nativepay.NativePayService;
-import jakarta.annotation.Resource;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 微信支付 API v3 配置 —— JSAPI + Native 服务 Bean
@@ -20,7 +20,7 @@ import java.nio.file.Paths;
 @ConditionalOnExpression("'${wechat.pay.enabled:false}' == 'true'")
 public class WechatPayConfig {
 
-    @Resource
+    @Autowired
     private WechatPayProperties props;
 
     /** 微信支付 SDK 核心配置（自动下载/更新平台证书） */

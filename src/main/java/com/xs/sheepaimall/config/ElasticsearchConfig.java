@@ -17,7 +17,7 @@ import org.apache.http.client.CredentialsProvider;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.elasticsearch.client.RestClient;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.util.StringUtils;
@@ -27,7 +27,7 @@ import java.time.format.DateTimeFormatter;
 
 /** Elasticsearch 客户端配置 — 仅在配置 spring.elasticsearch.uris 后生效 */
 @Configuration
-@ConditionalOnProperty(name = "spring.elasticsearch.uris")
+@ConditionalOnExpression("'${spring.elasticsearch.uris:}' != ''")
 public class ElasticsearchConfig {
 
     /** ES 日期格式：与 SpuDocument 中 @Field(pattern) 保持一致 */

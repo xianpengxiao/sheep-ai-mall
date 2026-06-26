@@ -10,16 +10,16 @@ import com.xs.sheepaimall.entity.Category;
 import com.xs.sheepaimall.mapper.CategoryMapper;
 import com.xs.sheepaimall.service.CategoryService;
 import com.xs.sheepaimall.vo.CategoryVO;
-import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> implements CategoryService {
 
-    @Resource
+    @Autowired
     private CacheHelper cacheHelper;
 
     @Override

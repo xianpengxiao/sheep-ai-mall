@@ -12,12 +12,12 @@ import com.xs.sheepaimall.vo.OrderInfoVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 订单接口 —— 下单事务管控
@@ -28,7 +28,7 @@ import java.util.List;
 @RequestMapping("/api/order")
 public class OrderController {
 
-    @Resource
+    @Autowired
     private OrderService orderService;
 
     @Operation(summary = "下单",

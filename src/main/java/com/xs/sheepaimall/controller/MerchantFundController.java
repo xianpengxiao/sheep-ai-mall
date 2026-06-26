@@ -11,7 +11,6 @@ import com.xs.sheepaimall.vo.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
@@ -19,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Tag(name = "商家-资金", description = "商家后台资金管理：结算账户、提现、流水、分佣、对账")
 @Validated
@@ -26,10 +26,10 @@ import java.time.LocalDate;
 @RequestMapping("/api/merchant/fund")
 public class MerchantFundController {
 
-    @Resource
+    @Autowired
     private FundService fundService;
 
-    @Resource
+    @Autowired
     private MerchantService merchantService;
 
     /** 获取当前商家 ID */

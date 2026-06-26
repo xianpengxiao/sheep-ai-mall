@@ -9,14 +9,14 @@ import com.xs.sheepaimall.mapper.MerchantApplyMapper;
 import com.xs.sheepaimall.mapper.MerchantMapper;
 import com.xs.sheepaimall.mapper.SysUserMapper;
 import com.xs.sheepaimall.mapper.SysUserRoleMapper;
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
-
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import java.time.LocalDateTime;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 应用启动数据初始化：确保管理员和商家测试账号存在
@@ -34,16 +34,16 @@ public class DataInitRunner implements ApplicationRunner {
     private static final long ROLE_VIEWER_ID = 3L;
     private static final long ROLE_MERCHANT_ID = 4L;
 
-    @Resource
+    @Autowired
     private SysUserMapper sysUserMapper;
 
-    @Resource
+    @Autowired
     private SysUserRoleMapper sysUserRoleMapper;
 
-    @Resource
+    @Autowired
     private MerchantMapper merchantMapper;
 
-    @Resource
+    @Autowired
     private MerchantApplyMapper merchantApplyMapper;
 
     private static final BCryptPasswordEncoder ENCODER = new BCryptPasswordEncoder();

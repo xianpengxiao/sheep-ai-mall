@@ -23,24 +23,25 @@ import java.util.List;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "商家", description = "买家端 + 商家后台管理")
+import org.springframework.web.bind.annotation.*;
+import org.springframework.beans.factory.annotation.Autowired;
+@Tag(name = "商家页面相关接口", description = "商家操作和展示信息接口")
 @Validated
 @RestController
 @RequestMapping("/api/merchant")
 public class MerchantController {
 
-    @Resource
+    @Autowired
     private MerchantService merchantService;
 
-    @Resource
+    @Autowired
     private ReviewService reviewService;
 
-    @Resource
+    @Autowired
     private MerchantDsrService merchantDsrService;
 
     // ==================== 买家端 ====================

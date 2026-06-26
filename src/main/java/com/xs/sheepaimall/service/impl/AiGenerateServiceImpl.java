@@ -12,12 +12,12 @@ import com.xs.sheepaimall.entity.AiGenerateRecord;
 import com.xs.sheepaimall.mapper.AiGenerateRecordMapper;
 import com.xs.sheepaimall.service.AiGenerateService;
 import com.xs.sheepaimall.vo.AiGenerateRecordVO;
-import jakarta.annotation.Resource;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /** AI 文案生成 Service 实现 — 基于 Spring AI + DeepSeek */
 @Service
@@ -27,10 +27,10 @@ public class AiGenerateServiceImpl implements AiGenerateService {
     private static final int TYPE_PRODUCT_COPY = 5;
 
     /** Spring AI 自动注入的 ChatModel（OpenAiChatModel 代理到 DeepSeek） */
-    @Resource
+    @Autowired
     private ChatModel chatModel;
 
-    @Resource
+    @Autowired
     private AiGenerateRecordMapper aiGenerateRecordMapper;
 
     @Override

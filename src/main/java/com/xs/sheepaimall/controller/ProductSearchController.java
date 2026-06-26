@@ -9,19 +9,18 @@ import com.xs.sheepaimall.vo.ProductSearchVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
-
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Autowired;
 /** 商品搜索接口（Elasticsearch） — 仅在配置 spring.elasticsearch.uris 后生效 */
 @Tag(name = "商品搜索", description = "Elasticsearch 全文检索，支持关键词/分类/价格/排序/高亮")
 @RestController
 @RequestMapping("/api/search")
-@ConditionalOnProperty(name = "spring.elasticsearch.uris")
 public class ProductSearchController {
 
-    @Resource
+    @Autowired
     private ProductSearchService productSearchService;
 
     @Operation(summary = "商品搜索", description = "支持关键词多字段匹配、分类筛选、价格区间、销量/价格/最新排序、关键词高亮")

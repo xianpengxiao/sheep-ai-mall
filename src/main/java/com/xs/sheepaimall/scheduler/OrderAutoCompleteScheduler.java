@@ -3,7 +3,6 @@ package com.xs.sheepaimall.scheduler;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.xs.sheepaimall.entity.OrderInfo;
 import com.xs.sheepaimall.service.OrderService;
-import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -11,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 自动确认收货定时任务 —— 每天凌晨扫描已发货超过7天的订单，自动完成并生成待评记录。
@@ -25,7 +25,7 @@ public class OrderAutoCompleteScheduler {
     /** 发货后自动确认收货天数 */
     private static final int AUTO_COMPLETE_DAYS = 7;
 
-    @Resource
+    @Autowired
     private OrderService orderService;
 
     /** 每天凌晨 2:30 执行 */

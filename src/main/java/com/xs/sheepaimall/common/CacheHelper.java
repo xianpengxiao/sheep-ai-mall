@@ -1,6 +1,5 @@
 package com.xs.sheepaimall.common;
 
-import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -12,6 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 缓存工具：防穿透（缓存空值）、防击穿（分布式锁）、防雪崩（TTL 随机抖动）
@@ -26,7 +26,7 @@ public class CacheHelper {
      */
     public static final String NULL_MARKER = "__NULL__";
 
-    @Resource
+    @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
     // ==================== 基础操作 ====================

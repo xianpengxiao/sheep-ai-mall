@@ -28,10 +28,9 @@ import com.xs.sheepaimall.service.SpuService;
 import com.xs.sheepaimall.vo.MerchantDsrVO;
 import com.xs.sheepaimall.vo.MerchantSearchVO;
 import com.xs.sheepaimall.vo.ProductSearchVO;
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,34 +42,34 @@ import java.util.stream.Collectors;
 /** 商品搜索 Service 实现 — Elasticsearch */
 @Slf4j
 @Service
-@ConditionalOnProperty(name = "spring.elasticsearch.uris")
+@ConditionalOnExpression("'${spring.elasticsearch.uris:}' != ''")
 public class ProductSearchServiceImpl implements ProductSearchService {
 
     private static final int SYNC_BATCH_SIZE = 500;
 
-    @Resource
+    @Autowired
     private ElasticsearchClient esClient;
 
-    @Resource
+    @Autowired
     private SpuDocumentRepository spuDocRepo;
 
-    @Resource
+    @Autowired
     private SpuService spuService;
 
-    @Resource
+    @Autowired
     private SkuService skuService;
 
-    @Resource
+    @Autowired
     private CategoryService categoryService;
 
-    @Resource
+    @Autowired
     private MerchantDocumentRepository merchantDocRepo;
 
     @Lazy
     @Autowired
     private MerchantService merchantService;
 
-    @Resource
+    @Autowired
     private MerchantDsrService merchantDsrService;
 
     // ==================== 商品搜索 ====================

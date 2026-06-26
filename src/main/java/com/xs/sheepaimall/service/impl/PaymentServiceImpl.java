@@ -19,7 +19,6 @@ import com.xs.sheepaimall.mapper.PaymentRecordMapper;
 import com.xs.sheepaimall.service.OrderService;
 import com.xs.sheepaimall.service.PaymentService;
 import com.xs.sheepaimall.service.SysUserService;
-import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.LoggerFactory;
@@ -56,13 +55,13 @@ public class PaymentServiceImpl extends ServiceImpl<PaymentRecordMapper, Payment
     @Autowired(required = false)
     private JsapiService jsapiService;
 
-    @Resource
+    @Autowired
     private WechatPayProperties wechatPayProperties;
 
-    @Resource
+    @Autowired
     private OrderService orderService;
 
-    @Resource
+    @Autowired
     private SysUserService sysUserService;
 
     // ==================== 创建 JSAPI 支付 ====================

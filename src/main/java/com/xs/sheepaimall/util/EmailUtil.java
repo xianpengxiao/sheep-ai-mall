@@ -1,13 +1,13 @@
 package com.xs.sheepaimall.util;
 
-import jakarta.annotation.Resource;
 import jakarta.mail.internet.MimeMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
-
+import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.beans.factory.annotation.Autowired;
 /**
  * 邮箱发送工具
  */
@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class EmailUtil {
 
-    @Resource
+    @Autowired
     private JavaMailSender mailSender;
 
     @Value("${spring.mail.username}")
