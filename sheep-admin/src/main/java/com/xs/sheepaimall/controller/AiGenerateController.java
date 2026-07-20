@@ -9,6 +9,7 @@ import com.xs.sheepaimall.vo.AiGenerateRecordVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -37,4 +38,6 @@ public class AiGenerateController {
     public R<AiGenerateRecordVO> saveProductCopy(@Valid @RequestBody ProductCopySaveDTO dto) {
         return R.ok(aiGenerateService.saveProductCopy(dto));
     }
+
+
 }
