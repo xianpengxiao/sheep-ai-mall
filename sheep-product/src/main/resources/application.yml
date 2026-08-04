@@ -1,0 +1,83 @@
+server:
+  profiles:
+    active: dev
+
+spring:
+  application:
+    name: sheep-product
+  cloud:
+    nacos:
+      server-addr: 192.168.168.100:8848
+      username: nacos
+      password: nacos
+      discovery:
+        group: SHEEP_MALL
+      config:
+        group: SHEEP_MALL
+        file-extension: yaml
+        import-check:
+          enabled: false
+
+  datasource:
+    driver-class-name: ${sheep.datasource.driver-class-name}
+    url: jdbc:mysql://${sheep.datasource.host}:${sheep.datasource.port}/${sheep.datasource.database}?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: ${sheep.datasource.username}
+    password: ${sheep.datasource.password}
+
+  elasticsearch:
+    uris: ${sheep.elasticsearch.uris}
+    connection-timeout: ${sheep.elasticsearch.connection-timeout}
+    socket-timeout: ${sheep.elasticsearch.socket-timeout}
+
+  data:
+    redis:
+      host: ${sheep.redis.host}
+      port: ${sheep.redis.port}
+      password: ${sheep.redis.password}
+      database: ${sheep.redis.database}
+      timeout: ${sheep.redis.timeout}
+      lettuce:
+        pool:
+          max-active: ${sheep.redis.max-active}
+          max-idle: ${sheep.redis.max-idle}
+          min-idle: ${sheep.redis.min-idle}
+          max-wait: ${sheep.redis.max-wait}
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 30m
+      cache-null-values: true
+
+  rabbitmq:
+    host: ${sheep.rabbitmq.host}
+    port: ${sheep.rabbitmq.port}
+    username: ${sheep.rabbitmq.username}
+    password: ${sheep.rabbitmq.password}
+    virtual-host: ${sheep.rabbitmq.virtual-host}
+
+mybatis-plus:
+  type-aliases-package: com.xs.sheepaimall.entity
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+
+sheep:
+  alioss:
+    endpoint: ${sheep.alioss.endpoint}
+    access-key-id: ${sheep.alioss.access-key-id}
+    access-key-secret: ${sheep.alioss.access-key-secret}
+    bucket-name: ${sheep.alioss.bucket-name}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+knife4j:
+  enable: true
+  setting:
+    enable-swagger-models: true

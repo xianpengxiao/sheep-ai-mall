@@ -1,0 +1,69 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: sheep-order
+  cloud:
+    nacos:
+      server-addr: 192.168.168.100:8848
+      username: nacos
+      password: nacos
+      discovery:
+        group: SHEEP_MALL
+      config:
+        group: SHEEP_MALL
+        file-extension: yaml
+        import-check:
+          enabled: false
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/sheep_order_db?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:123456}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:123456}
+      database: 1
+      timeout: 3s
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 4
+          max-wait: 3s
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+
+mybatis-plus:
+  type-aliases-package: com.xs.sheepaimall.entity
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+
+sheep:
+  mall:
+    order:
+      pay-timeout-minutes: 15
+
+wechat:
+  pay:
+    enabled: ${WECHAT_PAY_ENABLED:false}
+    merchant-id: ${WECHAT_PAY_MERCHANT_ID:}
+    merchant-serial-number: ${WECHAT_PAY_SERIAL_NO:}
+    private-key-path: ${WECHAT_PAY_KEY_PATH:}
+    private-key-content: ${WECHAT_PAY_KEY_CONTENT:}
+    api-v3-key: ${WECHAT_PAY_API_V3_KEY:}
+    notify-url: ${WECHAT_PAY_NOTIFY_URL:}

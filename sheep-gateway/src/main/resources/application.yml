@@ -1,0 +1,59 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: sheep-gateway
+  cloud:
+    nacos:
+      server-addr: 192.168.168.100:8848
+      username: nacos
+      password: nacos
+      discovery:
+        group: SHEEP_MALL
+      config:
+        group: SHEEP_MALL
+        file-extension: yaml
+        import-check:
+          enabled: false
+
+    gateway:
+      routes:
+        # Auth
+        - id: sheep-auth
+          uri: lb://sheep-auth
+          predicates:
+            - Path=/api/auth/**, /api/profile/**, /api/shipping-address/**, /api/admin/users/**, /api/admin/roles
+
+        # Product
+        - id: sheep-product
+          uri: lb://sheep-product
+          predicates:
+            - Path=/api/spu/**, /api/sku/**, /api/category/**, /api/search/**, /api/upload/**, /api/admin/spu/**
+
+        # Order
+        - id: sheep-order
+          uri: lb://sheep-order
+          predicates:
+            - Path=/api/order/**, /api/cart/**, /api/payment/**, /api/review/**, /api/admin/review/**
+
+        # Merchant
+        - id: sheep-merchant
+          uri: lb://sheep-merchant
+          predicates:
+            - Path=/api/merchant/**, /api/admin/merchant/**, /api/admin/fund/**
+
+        # AI
+        - id: sheep-ai
+          uri: lb://sheep-ai
+          predicates:
+            - Path=/api/ai/**
+
+      # Swagger
+        - id: swagger
+          uri: lb://sheep-product
+          predicates:
+            - Path=/swagger-ui/**, /v3/api-docs/**, /swagger-resources/**, /webjars/**
+
+knife4j:
+  enable: true

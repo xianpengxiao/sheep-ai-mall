@@ -1,0 +1,41 @@
+spring:
+  profiles:
+    active: dev
+  application:
+    name: sheep-ai
+#  cloud:
+#    nacos:
+#      server-addr: 192.168.168.100:8848
+#      username: nacos
+#      password: nacos
+#      discovery:
+#        group: SHEEP_MALL
+#      config:
+#        group: SHEEP_MALL
+#        file-extension: yaml
+#        import-check:
+#          enabled: false
+
+  datasource:
+    driver-class-name: ${sheep.datasource.driver-class-name}
+    url: jdbc:mysql://${sheep.datasource.host}:${sheep.datasource.port}/${sheep.datasource.database}?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: ${sheep.datasource.username}
+    password: ${sheep.datasource.password}
+
+  ai:
+    openai:
+      base-url: https://api.deepseek.com
+      api-key: ${sheep.ai.deepseek.api-key}
+      chat:
+        options:
+          model: deepseek-chat #模型名称
+          temperature: 0.8 #模型温度，值越大输出结果越随机
+
+mybatis-plus:
+  type-aliases-package: com.xs.sheepaimall.entity
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
