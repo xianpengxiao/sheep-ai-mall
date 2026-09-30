@@ -69,4 +69,59 @@ public final class RabbitMQConstants {
 
     /** 库存锁定状态 TTL（秒），30分钟——超过此时间未支付则自动视为过期 */
     public static final long STOCK_LOCKED_TTL_SECONDS = 1800;
+
+    // ==================== 客服 Chat ====================
+
+    /** 客服 Topic 交换机 */
+    public static final String CHAT_EXCHANGE = "sheep.mall.chat.exchange";
+
+    /** 客服画像更新队列 */
+    public static final String CHAT_PROFILE_QUEUE = "sheep.mall.chat.profile.queue";
+
+    /** 客服画像更新路由键 */
+    public static final String CHAT_PROFILE_ROUTING_KEY = "chat.profile.update";
+
+    /** 客服幂等 Key 前缀 */
+    public static final String CHAT_IDEMPOTENT_PREFIX = "chat:profile:msg:";
+
+    // ==================== 人工客服 CS ====================
+
+    /** 客服 Topic 交换机 */
+    public static final String CS_EXCHANGE = "sheep.mall.cs.exchange";
+
+    /** 客服 DLX 交换机 */
+    public static final String CS_DLX_EXCHANGE = "sheep.mall.cs.dlx.exchange";
+
+    /** 消息持久化队列 */
+    public static final String CS_MESSAGE_PERSIST_QUEUE = "sheep.mall.cs.message.persist.queue";
+
+    /** 消息持久化 DLQ */
+    public static final String CS_MESSAGE_PERSIST_DLQ = "sheep.mall.cs.message.persist.dlq";
+
+    /** 消息持久化路由键 */
+    public static final String CS_MESSAGE_PERSIST_KEY = "cs.message.persist";
+
+    /** 消息持久化 DLQ 路由键 */
+    public static final String CS_MESSAGE_PERSIST_DLQ_KEY = "cs.message.persist.dlq";
+
+    /** 实时推送队列 */
+    public static final String CS_PUSH_QUEUE = "sheep.mall.cs.push.queue";
+
+    /** 实时推送路由键 */
+    public static final String CS_PUSH_KEY = "cs.push";
+
+    /** 排队分配队列 */
+    public static final String CS_QUEUE_ASSIGN_QUEUE = "sheep.mall.cs.queue.assign.queue";
+
+    /** 排队分配路由键 */
+    public static final String CS_QUEUE_ASSIGN_KEY = "cs.queue.assign";
+
+    /** 转人工队列 */
+    public static final String CS_TRANSFER_QUEUE = "sheep.mall.cs.transfer.queue";
+
+    /** 转人工路由键 */
+    public static final String CS_TRANSFER_KEY = "cs.transfer";
+
+    /** 客服消息幂等 Key 前缀 */
+    public static final String CS_MSG_IDEMPOTENT_PREFIX = "cs:msg:dedup:";
 }

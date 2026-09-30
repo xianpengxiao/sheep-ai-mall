@@ -8,7 +8,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 /**
  * Web MVC 配置：注册 JWT 认证拦截器 + 白名单
  */
-@Configuration
+@Configuration("authWebConfig")
 public class WebConfig implements WebMvcConfigurer {
 
     private final AuthInterceptor authInterceptor;

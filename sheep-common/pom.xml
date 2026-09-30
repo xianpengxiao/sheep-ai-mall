@@ -59,6 +59,12 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- OpenFeign（Feign 客户端注解定义在 common 中，所有模块共用） -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+
         <!-- Knife4j / Swagger 注解（通用实体注解依赖） -->
         <dependency>
             <groupId>com.github.xiaoymin</groupId>
