@@ -19,6 +19,15 @@ public class ChatSession {
     @Schema(description = "用户ID")
     private Long userId;
 
+    @Schema(description = "商家ID，null=平台客服")
+    private Long merchantId;
+
+    @Schema(description = "服务模式：0=AI服务 1=人工服务")
+    private Integer serviceMode;
+
+    @Schema(description = "转接发起时间（人工态超时懒检查用，转回AI时置null）")
+    private LocalDateTime transferTime;
+
     @Schema(description = "会话标题")
     private String title;
 

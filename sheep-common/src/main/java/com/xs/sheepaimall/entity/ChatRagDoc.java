@@ -28,6 +28,9 @@ public class ChatRagDoc {
     @Schema(description = "分类：faq/product/policy")
     private String category;
 
+    @Schema(description = "归属商家ID，null=平台公共文档")
+    private Long merchantId;
+
     @Schema(description = "启用状态：0=禁用 1=启用")
     private Integer enabled;
 
@@ -38,4 +41,8 @@ public class ChatRagDoc {
     @Schema(description = "更新时间")
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
+
+    @Schema(description = "向量嵌入状态（瞬态，仅写操作响应返回）：null=成功，其他为未同步/失败原因")
+    @TableField(exist = false)
+    private String embedStatus;
 }

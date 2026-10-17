@@ -18,12 +18,27 @@ public interface ChatService {
      */
     Flux<String> sendMessage(ChatSendDTO dto);
 
-    /** 当前用户的会话列表 */
-    List<ChatSessionVO> listSessions();
+    /**
+     * 当前用户的会话列表（按聊天对象隔离）
+     *
+     * @param merchantId 聊天对象：商家ID（null=平台会话列表）
+     */
+    List<ChatSessionVO> listSessions(Long merchantId);
 
     /** 会话消息历史 */
     List<ChatMessageVO> getMessages(Long sessionId);
 
     /** 删除会话 */
     void deleteSession(Long sessionId);
+
+    /**
+     * 商品卡片"加入购物车"专用：仅生成待确认操作单（走确认闸，不直接加购）。
+     * 校验 SKU 在售，参数快照含 spuId/skuId/quantity。
+     *
+     * @param skuId     商品规格ID
+     * @param quantity  数量（null/<=0 按 1）
+     * @param sessionId 当前会话ID（可选，仅作操作单归属记录）
+     * @return 创建成功的操作单（含 operationId）
+     */
+    com.xs.sheepaimall.entity.ChatPendingOp createAddCartOp(Long skuId, Integer quantity, Long sessionId);
 }

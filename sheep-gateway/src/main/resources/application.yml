@@ -49,6 +49,12 @@ spring:
           predicates:
             - Path=/api/ai/**
 
+        # CS (Customer Service)
+        - id: sheep-cs
+          uri: lb://sheep-cs
+          predicates:
+            - Path=/api/cs/**
+
       # Swagger
         - id: swagger
           uri: lb://sheep-product

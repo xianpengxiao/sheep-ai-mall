@@ -19,7 +19,7 @@ public class ChatMessage {
     @Schema(description = "会话ID")
     private Long sessionId;
 
-    @Schema(description = "角色：0=用户 1=AI")
+    @Schema(description = "角色：0=用户 1=AI(含系统提示) 2=商家人工 3=平台人工")
     private Integer role;
 
     @Schema(description = "消息内容")

@@ -1,8 +1,7 @@
-server:
+spring:
   profiles:
     active: dev
 
-spring:
   application:
     name: sheep-product
   cloud:

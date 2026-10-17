@@ -3,18 +3,18 @@ spring:
     active: dev
   application:
     name: sheep-ai
-#  cloud:
-#    nacos:
-#      server-addr: 192.168.168.100:8848
-#      username: nacos
-#      password: nacos
-#      discovery:
-#        group: SHEEP_MALL
-#      config:
-#        group: SHEEP_MALL
-#        file-extension: yaml
-#        import-check:
-#          enabled: false
+  cloud:
+    nacos:
+      server-addr: 192.168.168.100:8848
+      username: nacos
+      password: nacos
+      discovery:
+        group: SHEEP_MALL
+      config:
+        group: SHEEP_MALL
+        file-extension: yaml
+        import-check:
+          enabled: false
 
   datasource:
     driver-class-name: ${sheep.datasource.driver-class-name}
@@ -22,14 +22,26 @@ spring:
     username: ${sheep.datasource.username}
     password: ${sheep.datasource.password}
 
+  rabbitmq:
+    host: ${sheep.rabbitmq.host}
+    port: ${sheep.rabbitmq.port}
+    username: ${sheep.rabbitmq.username}
+    password: ${sheep.rabbitmq.password}
+    virtual-host: ${sheep.rabbitmq.virtual-host}
+
   ai:
     openai:
       base-url: https://api.deepseek.com
       api-key: ${sheep.ai.deepseek.api-key}
       chat:
         options:
-          model: deepseek-chat #模型名称
-          temperature: 0.8 #模型温度，值越大输出结果越随机
+          model: deepseek-chat
+          temperature: 0.8
+      embedding:
+        base-url: https://api.openai.com
+        api-key: ${OPENAI_API_KEY:sk-placeholder}
+        options:
+          model: text-embedding-3-small
 
 mybatis-plus:
   type-aliases-package: com.xs.sheepaimall.entity

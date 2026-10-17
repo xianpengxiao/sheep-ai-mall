@@ -1,0 +1,47 @@
+package com.xs.sheepaimall.service;
+
+import com.xs.sheepaimall.entity.ChatPendingOp;
+
+import java.util.Map;
+
+/**
+ * 待确认操作单服务 —— 智能客服写工具的安全落地。
+ * <p>写工具绝不直接执行业务，只生成操作单；用户通过 confirm 接口确认后由服务端执行。
+ * 操作单双写 Redis（chat:pendingop:{operationId}，TTL 5 分钟）+ MySQL（chat_pending_op，幂等记录），
+ * Redis 不可用时仅用 MySQL。</p>
+ */
+public interface PendingOperationService {
+
+    /** 操作类型：修改收货地址 */
+    String OP_UPDATE_ADDRESS = "UPDATE_ADDRESS";
+
+    /** 操作类型：取消订单 */
+    String OP_CANCEL_ORDER = "CANCEL_ORDER";
+
+    /** 操作类型：加入购物车 */
+    String OP_ADD_CART = "ADD_CART";
+
+    /**
+     * 创建待确认操作单（双写 Redis + MySQL，5 分钟过期）
+     *
+     * @param userId      归属用户
+     * @param sessionId   会话ID
+     * @param opType      操作类型（见 OP_* 常量）
+     * @param args        参数快照（序列化为 argsJson 存储）
+     * @param displayText 给用户看的操作描述
+     * @return 创建成功的操作单（含 operationId）
+     */
+    ChatPendingOp create(Long userId, Long sessionId, String opType, Map<String, Object> args, String displayText);
+
+    /**
+     * 确认/取消操作单。
+     * <p>校验操作单存在、归属当前用户、未过期；用原子抢占（UPDATE ... WHERE id=? AND status=0）
+     * 保证幂等，影响行数为 0 视为已处理。approve=true 时由服务端从参数快照反序列化并调用真正的业务 Service 执行；
+     * approve=false 时仅标记取消。确认请求只带 operationId + approve，不带业务参数。</p>
+     *
+     * @param operationId   操作单ID
+     * @param approve       true=确认执行 false=取消
+     * @param currentUserId 当前登录用户ID（用于归属校验）
+     */
+    void confirm(String operationId, boolean approve, Long currentUserId);
+}

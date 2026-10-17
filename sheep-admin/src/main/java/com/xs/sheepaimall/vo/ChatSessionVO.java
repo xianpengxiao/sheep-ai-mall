@@ -24,4 +24,13 @@ public class ChatSessionVO {
 
     @Schema(description = "消息总数")
     private Integer messageCount;
+
+    @Schema(description = "服务模式：0=AI服务 1=人工服务")
+    private Integer serviceMode;
+
+    @Schema(description = "所属商家ID（平台会话为空）")
+    private Long merchantId;
+
+    @Schema(description = "店铺名称（平台会话为空）")
+    private String shopName;
 }

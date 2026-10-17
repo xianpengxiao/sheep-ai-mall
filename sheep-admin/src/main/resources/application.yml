@@ -66,6 +66,10 @@ spring:
       chat:
         options:
           model: deepseek-chat
+      # Embedding 走百炼（见 VectorStoreConfig 手动装配），
+      # 关闭指向 DeepSeek 的自动装配 EmbeddingModel
+      embedding:
+        enabled: false
   # 文件上传
   servlet:
     multipart:

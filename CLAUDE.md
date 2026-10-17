@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-SheepAIMall — Spring Boot 3.3.6 / Java 17 / Maven 智能电商商品服务。基础包 `com.xs.sheepaimall`。
+SheepAIMall — Spring Boot 3.3.6 / Java 17 / Maven 智能电商后端。基础包 `com.xs.sheepaimall`。
 
 ## 常用命令
 
@@ -12,8 +12,8 @@ SheepAIMall — Spring Boot 3.3.6 / Java 17 / Maven 智能电商商品服务。�
 ./mvnw compile              # 编译
 ./mvnw test                 # 运行全部测试
 ./mvnw test -Dtest=XXX      # 运行单个测试类
-./mvnv spring-boot:run      # 启动应用（端口 8080，MySQL/Redis/RabbitMQ/ES 需本地启动）
-./mvnw package              # 打包
+./mvnw spring-boot:run      # 启动应用（端口 8080，MySQL/Redis/RabbitMQ/ES 需本地启动）
+./mvnw package -DskipTests  # 打包（跳过测试）
 ```
 
 ## 技术栈
@@ -23,31 +23,44 @@ SheepAIMall — Spring Boot 3.3.6 / Java 17 / Maven 智能电商商品服务。�
 | Spring Boot 3.3.6 | 基础框架 |
 | MyBatis-Plus 3.5.12 | ORM + 分页（雪花ID主键，全局 ASSIGN_ID） |
 | MySQL | 数据库 (sheep_ai_mall) |
-| Redis | 缓存 + JWT黑名单 + 库存锁定追踪 + 幂等去重 |
+| Redis | 缓存 + JWT黑名单 + 库存锁定追踪 + 幂等去重 + 分布式锁 |
 | RabbitMQ | 库存锁定/释放异步消息 + DLX死信重试 |
-| Elasticsearch | 商品全文检索 |
+| Elasticsearch 7.17 | 商品全文检索（IK 分词器） |
 | Spring AI (DeepSeek) | AI 自动生成商品文案 |
 | Knife4j 4.5.0 | API 文档 (http://localhost:8080/swagger-ui.html) |
-| 微信支付 SDK | JSAPI 支付 |
+| 微信支付 SDK v3 | JSAPI 支付 |
 | Hutool 5.8.37 | 通用工具集 |
 | Aliyun OSS SDK | 图片文件存储（头像/商品图/资质图） |
 | jjwt 0.12.6 | JWT Token 签发与验证 |
 | Spring Security Crypto | 仅密码 BCrypt 加密（不含安全框架） |
+| JavaMail | 邮箱验证码发送 |
+| 腾讯云短信 SDK | 短信验证码 |
 
 ## 配置体系
 
-- `application.yml` — 标准配置，值引用 `${sheep.*}` 或 `${sky.alioss.*}` 占位符
-- `application-dev.yml` — 开发环境实际值，定义所有 `sheep.*` 和 `alioss.*` 属性
+### Profile 结构
+
+- `application.yml` — 标准配置，值引用 `${sheep.*}` 占位符
+- `application-dev.yml` — 开发环境：localhost 地址，详细 SQL 日志
+- `application-docker.yml` — Docker 生产环境：容器名连接，关闭 SQL 日志
 
 ### 关键配置项
 
-| 配置 | 位置 | 说明 |
+| 配置 | 说明 | 备注 |
 |------|------|------|
-| `alioss.endpoint/access-key-id/...` | application-dev.yml | 阿里云 OSS，用于图片文件存储 |
-| `sheep.jwt.secret/expiration` | application-dev.yml | JWT 签名密钥（256位）和过期时间（默认2h） |
-| `sheep.mall.order.pay-timeout-minutes` | application-dev.yml | 支付超时分钟数，默认15 |
-| `wechat.pay.enabled` | application.yml | 微信支付开关，默认 false |
-| `spring.ai.openai.*` | application.yml | 实际对接 DeepSeek API |
+| `sheep.datasource.*` | MySQL 连接信息 | host/port/database/username/password |
+| `sheep.redis.*` | Redis 连接（含连接池） | database=1 |
+| `sheep.rabbitmq.*` | RabbitMQ 连接 | virtual-host=/ |
+| `sheep.elasticsearch.uris` | ES 地址 | 空值时注解 `@ConditionalOnExpression` 跳过加载 |
+| `sheep.jwt.secret/expiration` | JWT 签名密钥（256位）和过期时间 | dev=7200s, docker=43200s |
+| `sheep.mall.order.pay-timeout-minutes` | 支付超时分钟数 | 默认15 |
+| `sheep.alioss.*` | 阿里云 OSS | 图片文件存储 |
+| `sheep.mail.*` | SMTP 邮箱 | QQ邮箱 587端口 |
+| `sheep.tencent.sms.*` | 腾讯云短信 | 空值时仅日志不真实发送 |
+| `wechat.pay.enabled` | 微信支付开关 | 默认 false |
+| `spring.ai.openai.*` | 实际对接 DeepSeek API | base-url=https://api.deepseek.com |
+
+> **注意**：`@ConditionalOnProperty(name = "spring.elasticsearch.uris")` 在空字符串时仍会匹配（空值不等于 "false"），必须使用 `@ConditionalOnExpression("'${spring.elasticsearch.uris:}' != ''")` 替代才能正确跳过。
 
 ## 包结构
 
@@ -60,12 +73,12 @@ com.xs.sheepaimall
 ├── dto/            → 请求 DTO
 ├── vo/             → 响应 VO
 ├── security/       → JWT 认证 (AuthInterceptor) + 权限 (RequirePermission) + UserContext(ThreadLocal)
-├── util/           → 工具类（OssUtil 阿里云 OSS 上传）
-├── common/         → R, ResultCode, BizException, CacheHelper, RabbitMQConstants
-├── config/         → 各类 @Configuration（RabbitMQ、AliOssProperties、OssConfiguration、DataInitRunner 等）
-├── consumer/       → RabbitMQ @RabbitListener 消费者
-├── scheduler/      → @Scheduled 定时任务
-└── repository/     → Spring Data ES Repository
+├── util/           → 工具类（OssUtil、SensitiveWordUtil）
+├── common/         → R, ResultCode, BizException, CacheHelper, RabbitMQConstants, CacheConstants
+├── config/         → @Configuration（RabbitMQ、AliOssProperties、OssConfiguration、DataInitRunner、ElasticsearchConfig、WebConfig）
+├── consumer/       → RabbitMQ @RabbitListener 消费者（库存锁定/释放）
+├── scheduler/      → @Scheduled 定时任务（DSR日结/过期、订单自动完成、支付超时取消）
+└── repository/     → Spring Data ES Repository（SpuDocument / MerchantDocument）
 ```
 
 ## 安全与权限（RBAC）
@@ -82,12 +95,15 @@ com.xs.sheepaimall
 请求结束 → afterCompletion → UserContext.clear()
 ```
 
+### WebConfig 白名单
+
+见 `config/WebConfig.java:excludePathPatterns(...)`，所有公开 GET 接口和认证接口都配在这里。新增公开接口时**必须同步添加**，否则返回 401。
+
 ### 权限模型
 
 - 前端 GET 浏览接口公开（游客可访问）
-- 写操作（创建/修改/删除）需要对应的具体权限如 `spu:create`、`spu:update`
-- 权限标识符在 JWT 的 claims 中携带，由 `AuthInterceptor` 校验
-- 用户拥有的权限由 `sys_user_role` → `sys_role_permission` → `sys_permission.perm_code` 链路决定
+- 写操作需要对应权限如 `spu:create`、`spu:update`
+- 权限由 `sys_user_role` → `sys_role_permission` → `sys_permission.perm_code` 链路决定
 
 ### 角色体系（schema-rbac.sql）
 
@@ -98,25 +114,7 @@ com.xs.sheepaimall
 | 只读用户 | 3 | ROLE_VIEWER | 仅查看 |
 | 商家 | 4 | ROLE_MERCHANT | 商家后台权限 |
 
-商家拥有 `merchant:*` 权限（info:update, goods:manage, order:manage, stat:view, review:view），**不拥有** `spu:*` 或 `order:*`，不能绕过 MerchantController 直接操作 SpuController。
-
-## 商家系统
-
-三种视角隔离：
-
-| 视角 | 控制器 | 说明 |
-|------|--------|------|
-| 买家端 | MerchantController GET /api/merchant/{id} | 浏览商家列表/详情/商品 |
-| 商家后台 | MerchantController /api/merchant/info, goods, order... | 需 @RequirePermission("merchant:*") |
-| 平台管理 | AdminMerchantController /api/admin/merchant/... | 需 @RequirePermission("merchant:audit/list") |
-
-**Cashier 模式**：商家后台所有查询通过 `getCurrentMerchant()` 从 JWT → UserContext → Merchant 表获取当前商家 ID，SQL 全部 `WHERE merchant_id = ?` 硬隔离，无法操作其他店铺数据。
-
-```
-用户登录 → JWT含userId → getCurrentMerchant()查merchant表 → merchant.id
-  → 商品列表: WHERE merchant_id = merchant.id
-  → 订单列表: 通过SPU→order_item→order_info链路过滤
-```
+商家拥有 `merchant:*` 权限（info:update, goods:manage, order:manage, stat:view, review:view），**不拥有** `spu:*` 或 `order:*`。
 
 ### DataInitRunner 测试账号
 
@@ -126,6 +124,16 @@ com.xs.sheepaimall
 | zhangsan | 123456 | ROLE_VIEWER + ROLE_MERCHANT | 1001 |
 | lisi | 123456 | ROLE_VIEWER + ROLE_MERCHANT | 1002 |
 
+## 商家系统 — 三种视角隔离
+
+| 视角 | 控制器 | 说明 |
+|------|--------|------|
+| 买家端 | MerchantController GET /api/merchant/{id} | 浏览商家列表/详情/商品 |
+| 商家后台 | MerchantController /api/merchant/info, goods, order... | 需 @RequirePermission("merchant:*") |
+| 平台管理 | AdminMerchantController /api/admin/merchant/... | 需 @RequirePermission("merchant:audit/list") |
+
+**Cashier 模式**：商家后台所有查询通过 `getCurrentMerchant()` 从 JWT → UserContext → Merchant 表获取当前商家 ID，SQL 全部 `WHERE merchant_id = ?` 硬隔离。
+
 ## 统一文件上传
 
 ```
@@ -134,17 +142,12 @@ POST /api/upload/image?type=avatar|goods|cert
   → OssUtil → Aliyun OSS → 返回完整 URL
 ```
 
-- `avatar` → 头像，路径 `avatar/yyyyMMdd/`
-- `goods` → 商品图片，路径 `goods/yyyyMMdd/`
-- `cert` → 营业执照，路径 `cert/yyyyMMdd/`
-
-权限控制：avatar 任何登录用户可传，goods/cert 需对应 merchant 权限。
-旧头像自动删除：`AuthController.updateAvatar()` 上传新图后调用 `OssUtil.deleteByUrl()` 清理 OSS 旧文件。
-商家修改店铺信息时同样会清理旧的 shopLogo 和 businessLicense。
+- `avatar` → 头像，路径 `avatar/yyyyMMdd/`，任意登录用户可传
+- `goods` → 商品图片，路径 `goods/yyyyMMdd/`，需 merchant 权限
+- `cert` → 营业执照，路径 `cert/yyyyMMdd/`，需 merchant 权限
+- 旧头像自动删除：上传新图后调用 `OssUtil.deleteByUrl()` 清理 OSS 旧文件
 
 ## 库存锁定/释放（RabbitMQ 异步）
-
-见项目代码中的 RabbitMQ 配置和 consumer 包，时序如下：
 
 ```
 下单 → MQ stock.lock → 消费者扣库存 → Redis标记 LOCKED
@@ -161,8 +164,57 @@ POST /api/upload/image?type=avatar|goods|cert
 | `stock:release:msg:{id}` | 24h | 释放消息幂等 |
 | `stock:locked:{orderId}` | 支付超时×2 | 锁定状态 |
 | `cart::{userId}` | — | 购物车缓存 |
-| `spu::detail:{id}` | CacheHelper | SPU 详情 |
+| `spu::detail:{id}:v2` | CacheHelper | SPU 详情 |
+| `spu::hot_page::{page}::{size}` | CacheHelper | 热门商品分页 |
+| `category::tree` | CacheHelper | 分类树 |
 | `jwt:blacklist:{md5(token)}` | Token 剩余有效期 | 退出登录黑名单 |
+| `lock::cache::{key}` | 短TTL | CacheHelper 分布式锁防击穿 |
+| `lock::stock::{spuId}::{skuId}` | 短TTL | 库存操作分布式锁 |
+
+## 资金管理模块
+
+核心表（schema-fund.sql）：
+
+| 表 | 用途 |
+|------|------|
+| `merchant_settlement_account` | 商家结算账户（含 balance 可提现余额） |
+| `commission_config` | 类目佣金规则配置 |
+| `order_commission_log` | 订单分佣记录（status: 0待结算 1已结算 2已退款） |
+| `merchant_withdraw` | 提现申请（status: 0待审核 1待打款 2已打款 3已驳回） |
+| `fund_flow` | 资金流水（flow_type: commission_income/order_income/withdraw_expense 等） |
+| `oper_log` | 操作审计日志 |
+
+管理员端：`AdminFundController`（审核提现、查看流水/佣金/统计）
+商家端：`MerchantFundController`（绑定账户、申请提现、查看流水/收益/报表）
+
+## DSR 评分体系
+
+- `merchant_dsr` 表每日汇总店铺评分（describe_score, service_score, logistics_score）
+- `ProductReview`（product_review 表）扩展了评分字段
+- `DsrDailyScheduler` 每日凌晨计算各店铺 DSR
+- `DsrExpireScheduler` 定期清理过期评价（默认 90 天不展示）
+- `OrderAutoCompleteScheduler` 收货后自动完成订单
+
+## 搜索（Elasticsearch）
+
+- 商品搜索：`ProductSearchServiceImpl` 使用 IK 分词器多字段匹配 + wildcard 单字兜底 + 高亮
+- 商家搜索：`MerchantDocument` 搜索店铺名称/简介/经营范围
+- ES 条件加载：所有 ES 相关 Bean 通过 `@ConditionalOnExpression("'${spring.elasticsearch.uris:}' != ''")` 控制
+- 全量同步 API：`POST /api/search/sync-all`
+- IK 插件必须通过 `elasticsearch-plugin install` 安装，手动复制文件会导致 `plugin-descriptor.properties` 缺失
+
+## Docker 部署
+
+部署文件在项目根目录：
+- `Dockerfile` — 单阶段构建，基于 eclipse-temurin:17-jre-alpine
+- `docker-compose.yml` — 全栈编排（MySQL/Redis/RabbitMQ/ES/Nginx）
+- `es-dockerfile` — ES 带 IK 分词器的自定义镜像
+- `nginx.conf` — Nginx 反向代理配置
+- `application-docker.yml` — Docker 环境配置（容器名连接，关闭 SQL 日志）
+
+> **注意**：ES 必须用 es-dockerfile 构建安装 IK 插件，否则索引创建会报 `mapper_parsing_exception`。
+> **注意**：`SHEEP_ELASTICSEARCH_URIS` 设为空字符串不会禁用 ES，需配合代码中的 `@ConditionalOnExpression`。
+> **注意**：Dockerfile 未引入 actuator，HEALTHCHECK 应检测 `/` 而非 `/actuator/health`。
 
 ## 关键约定
 
@@ -174,3 +226,5 @@ POST /api/upload/image?type=avatar|goods|cert
 - **缓存**: `CacheHelper` 封装防穿透(null标记)、防击穿(SETNX分布式锁)、防雪崩(TTL抖动±20%)
 - **配置**: 新增配置项在 application-dev.yml 设实际值，application.yml 用占位符引用
 - **订单状态**: 0待支付 1已支付 2已发货 3已完成 4已取消（仅 0→1 或 0→4）
+- **SQL 迁移**: 在 `src/main/resources/sql/` 下创建 `migrate-{描述}-{日期}.sql` 文件，手动执行
+- **硬删除**: 所有业务表使用 `deleted` 字段逻辑删除（0=未删 1=已删）
