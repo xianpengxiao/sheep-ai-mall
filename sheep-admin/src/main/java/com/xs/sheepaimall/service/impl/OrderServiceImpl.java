@@ -75,6 +75,10 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     @Autowired
     private FundService fundService;
 
+    @Lazy
+    @Autowired
+    private com.xs.sheepaimall.service.AfterSaleService afterSaleService;
+
     // ==================== 下单 ====================
 
     @Override
@@ -165,7 +169,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         checkOrderOwnership(order, "order:list");
         List<OrderItem> items = orderItemService.list(
                 new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, id));
-        return buildOrderVO(order, items);
+        OrderInfoVO vo = buildOrderVO(order, items);
+        vo.setAfterSaleStatus(afterSaleService.pendingStatusByOrderIds(List.of(id)).get(id));
+        return vo;
     }
 
     // ==================== 会员订单查询 ====================
@@ -209,6 +215,10 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         List<OrderInfoVO> voList = orders.stream()
                 .map(order -> toOrderVO(order, itemMap.getOrDefault(order.getId(), List.of()), spuNameMap, reviewStatusMap))
                 .collect(Collectors.toList());
+
+        // 批量补充进行中售后单状态（订单列表"售后中"标识）
+        Map<Long, String> pendingAfterSaleMap = afterSaleService.pendingStatusByOrderIds(orderIds);
+        voList.forEach(vo -> vo.setAfterSaleStatus(pendingAfterSaleMap.get(vo.getId())));
 
         Page<OrderInfoVO> result = new Page<>(pageNum, pageSize);
         result.setTotal(page.getTotal());

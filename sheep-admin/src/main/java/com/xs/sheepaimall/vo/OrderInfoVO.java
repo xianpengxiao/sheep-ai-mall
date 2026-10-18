@@ -60,6 +60,12 @@ public class OrderInfoVO {
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
 
+    @Schema(description = "退款状态：0=无 1=退款中 2=已退款")
+    private Integer refundStatus;
+
+    @Schema(description = "进行中售后单状态：PENDING=售后中（空=无）")
+    private String afterSaleStatus;
+
     @Schema(description = "订单明细")
     private List<OrderItemVO> items;
 }

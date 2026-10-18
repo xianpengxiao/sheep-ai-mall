@@ -77,6 +77,20 @@ public class AgentChatService {
     private ChatSessionStateService chatSessionStateService;
 
     /**
+     * 商品 ES 检索服务；ES 未配置（spring.elasticsearch.uris 为空）时 Bean 不存在，此处允许为空，
+     * 为空则商品搜索自动走 DB 兜底路径。
+     */
+    @Autowired(required = false)
+    private com.xs.sheepaimall.service.ProductSearchService productSearchService;
+
+    @Autowired
+    private com.xs.sheepaimall.service.ShippingAddressService shippingAddressService;
+
+    @Autowired
+    private com.xs.sheepaimall.service.AfterSaleService afterSaleService;
+
+
+    /**
      * 带工具的流式对话
      *
      * @param messages      系统消息 + 历史上下文 + 本轮用户消息
@@ -95,7 +109,7 @@ public class AgentChatService {
         CustomerServiceTools tools = new CustomerServiceTools(userId, merchantId, sessionId,
                 orderService, orderItemService, cartService, spuService, skuService,
                 pendingOperationService, chatSessionStateService, pendingOpQueue,
-                goodsCardQueue, orderCardQueue);
+                goodsCardQueue, orderCardQueue, productSearchService, shippingAddressService, afterSaleService);
         List<ToolCallback> toolCallbacks = buildToolCallbacks(tools, userId, sessionId, merchantId);
 
         // 单次输出上限：取全局配置 max_output_tokens

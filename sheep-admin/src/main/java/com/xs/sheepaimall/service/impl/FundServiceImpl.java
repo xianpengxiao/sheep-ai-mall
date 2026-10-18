@@ -535,6 +535,16 @@ public class FundServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow> imple
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void refundDeduct(Long merchantId, Long orderId, BigDecimal amount) {
+        OrderInfo order = orderInfoMapper.selectById(orderId);
+        String orderNo = order != null ? order.getOrderNo() : String.valueOf(orderId);
+        createFundFlow(merchantId, "refund_deduct", "EXPENSE",
+                amount, orderId, "order", "售后退款扣回。订单号:" + orderNo);
+        log.info("售后退款扣回 merchantId={} orderId={} amount={}", merchantId, orderId, amount);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void settleOrderCommission(Long orderId) {
         // 由 OrderServiceImpl.confirmReceipt() 调用
         // 幂等：查询该订单是否已结算

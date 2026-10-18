@@ -2,7 +2,9 @@ package com.xs.sheepaimall.service.agent;
 
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xs.sheepaimall.dto.CartAddDTO;
+import com.xs.sheepaimall.dto.ProductSearchDTO;
 import com.xs.sheepaimall.entity.ChatPendingOp;
 import com.xs.sheepaimall.entity.OrderInfo;
 import com.xs.sheepaimall.entity.OrderItem;
@@ -12,18 +14,24 @@ import com.xs.sheepaimall.service.CartService;
 import com.xs.sheepaimall.service.OrderItemService;
 import com.xs.sheepaimall.service.OrderService;
 import com.xs.sheepaimall.service.PendingOperationService;
+import com.xs.sheepaimall.service.ProductSearchService;
 import com.xs.sheepaimall.service.SkuService;
 import com.xs.sheepaimall.service.SpuService;
 import com.xs.sheepaimall.service.impl.AuditService;
 import com.xs.sheepaimall.service.impl.ChatSessionStateService;
 import com.xs.sheepaimall.vo.CartVO;
+import com.xs.sheepaimall.vo.ProductSearchVO;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -33,7 +41,10 @@ import java.util.stream.Collectors;
  * 且 MethodToolCallback 会把方法签名暴露给 LLM，身份绝不能成为入参。</p>
  * <p>读工具直接执行；写工具只生成待确认操作单（{@link PendingOperationService}），绝不真正执行，
  * 创建成功的操作单会放入 pendingOpQueue，由调用方在 SSE 末尾下发结构化标记。</p>
+ * <p>商品搜索双路：优先 Elasticsearch 分词检索（{@link ProductSearchService}，未配置 ES 时为 null），
+ * ES 异常或结果为空时降级为数据库拆词查询兜底，两条路径都强制商家范围隔离。</p>
  */
+@Slf4j
 public class CustomerServiceTools {
 
     /** 单条工具输出最大字符数，超出截断并注明 */
@@ -61,6 +72,15 @@ public class CustomerServiceTools {
     private final ConcurrentLinkedQueue<Map<String, Object>> goodsCardQueue;
     /** 订单卡片队列：queryMyOrders/queryOrderDetail 入队（最多2条），随 [[ORDER_CARDS:...]] 标记下发 */
     private final ConcurrentLinkedQueue<Map<String, Object>> orderCardQueue;
+    /**
+     * 商品 ES 检索服务；ES 未配置（spring.elasticsearch.uris 为空）时为 null，搜索自动走 DB 兜底。
+     * 由 AgentChatService 以 required=false 注入后透传进来。
+     */
+    private final ProductSearchService productSearchService;
+    /** 收货地址服务：queryMyAddresses 用 */
+    private final com.xs.sheepaimall.service.ShippingAddressService shippingAddressService;
+    /** 售后服务：订单查询时标注 售后中/已退款 状态（只读） */
+    private final com.xs.sheepaimall.service.AfterSaleService afterSaleService;
 
     public CustomerServiceTools(Long userId, Long merchantId, Long sessionId,
                                 OrderService orderService, OrderItemService orderItemService,
@@ -69,7 +89,10 @@ public class CustomerServiceTools {
                                 ChatSessionStateService chatSessionStateService,
                                 ConcurrentLinkedQueue<ChatPendingOp> pendingOpQueue,
                                 ConcurrentLinkedQueue<Map<String, Object>> goodsCardQueue,
-                                ConcurrentLinkedQueue<Map<String, Object>> orderCardQueue) {
+                                ConcurrentLinkedQueue<Map<String, Object>> orderCardQueue,
+                                ProductSearchService productSearchService,
+                                com.xs.sheepaimall.service.ShippingAddressService shippingAddressService,
+                                com.xs.sheepaimall.service.AfterSaleService afterSaleService) {
         this.userId = userId;
         this.merchantId = merchantId;
         this.sessionId = sessionId;
@@ -83,6 +106,9 @@ public class CustomerServiceTools {
         this.pendingOpQueue = pendingOpQueue;
         this.goodsCardQueue = goodsCardQueue;
         this.orderCardQueue = orderCardQueue;
+        this.productSearchService = productSearchService;
+        this.shippingAddressService = shippingAddressService;
+        this.afterSaleService = afterSaleService;
     }
 
     // ==================== 读工具（直接执行） ====================
@@ -103,7 +129,7 @@ public class CustomerServiceTools {
                 .limit(ORDER_SUMMARY_LIMIT)
                 .map(o -> "订单ID:" + o.getId()
                         + " 订单号:" + o.getOrderNo()
-                        + " 状态:" + statusText(o.getStatus())
+                        + " 状态:" + statusText(o.getStatus()) + orderSuffix(o)
                         + " 金额:" + o.getTotalAmount() + "元"
                         + " 下单时间:" + o.getCreateTime())
                 .collect(Collectors.joining("\n"));
@@ -126,7 +152,7 @@ public class CustomerServiceTools {
         offerOrderCard(order);
         StringBuilder sb = new StringBuilder();
         sb.append("订单号:").append(order.getOrderNo())
-                .append(" 状态:").append(statusText(order.getStatus()))
+                .append(" 状态:").append(statusText(order.getStatus())).append(orderSuffix(order))
                 .append(" 金额:").append(order.getTotalAmount()).append("元")
                 .append(" 收货人:").append(order.getReceiverName())
                 .append(" 地址:").append(order.getReceiverAddress())
@@ -141,21 +167,17 @@ public class CustomerServiceTools {
     }
 
     /**
-     * 按关键词搜索在售商品（名称/副标题模糊匹配，按销量排序）。
-     * 当用户想找商品、比价、求推荐时使用；会话归属商家时结果自动收敛到该商家。
+     * 按关键词搜索在售商品。优先 Elasticsearch 分词检索（名称/副标题/描述/品牌，IK 分词 + 单字通配兜底），
+     * ES 不可用或结果为空时降级为数据库拆词查询；商家会话结果收敛到该商家，平台会话搜索全平台在售商品。
+     * 当用户想找商品、比价、求推荐时使用。
      */
-    @Tool(description = "按关键词搜索在售商品（名称、副标题匹配，按销量排序，最多返回10条），用于商品推荐与查找")
+    @Tool(description = "按关键词搜索在售商品（分词匹配名称、副标题、描述、品牌，最多返回10条），用于商品推荐与查找。商家会话只返回该商家商品，平台会话返回全平台在售商品")
     public String searchProducts(@ToolParam(description = "搜索关键词，如 蓝牙耳机") String keyword) {
-        // 不用 ProductSearchService（ES）：其不支持商家过滤且依赖 ES 可用性，直接走 SpuService 条件查询最简
-        List<Spu> spus = spuService.lambdaQuery()
-                .eq(Spu::getStatus, 1)
-                .eq(Spu::getAuditStatus, 1)
-                .and(StrUtil.isNotBlank(keyword), w -> w
-                        .like(Spu::getName, keyword).or().like(Spu::getSubTitle, keyword))
-                .eq(merchantId != null, Spu::getMerchantId, merchantId)
-                .orderByDesc(Spu::getSalesCount)
-                .last("LIMIT " + PRODUCT_SEARCH_LIMIT)
-                .list();
+        // 双路检索：ES 优先，异常/空结果走 DB 拆词兜底（与 ProductSearchServiceImpl.buildEsQuery 口径对齐）
+        List<Spu> spus = searchByEs(keyword);
+        if (spus == null) {
+            spus = searchByDb(keyword);
+        }
         if (spus.isEmpty()) {
             return wrap("商品数据", "未找到相关商品");
         }
@@ -168,6 +190,110 @@ public class CustomerServiceTools {
                         + " 销量:" + p.getSalesCount())
                 .collect(Collectors.joining("\n"));
         return wrap("商品数据", body);
+    }
+
+    /**
+     * ES 检索路径：返回按 ES 相关度排序的 Spu 列表。
+     * 返回 null 表示"ES 未配置 / 调用异常 / 结果为空 / 回表后全部失效"，调用方应走 DB 兜底。
+     */
+    private List<Spu> searchByEs(String keyword) {
+        if (productSearchService == null) {
+            return null;
+        }
+        try {
+            ProductSearchDTO dto = new ProductSearchDTO();
+            dto.setKeyword(keyword);
+            dto.setMerchantId(merchantId);
+            dto.setPageNum(1);
+            dto.setPageSize(PRODUCT_SEARCH_LIMIT);
+            Page<ProductSearchVO> result = productSearchService.search(dto);
+            List<Long> ids = result.getRecords().stream()
+                    .map(ProductSearchVO::getId)
+                    .filter(Objects::nonNull)
+                    .toList();
+            if (ids.isEmpty()) {
+                return null;
+            }
+            // ES 文档可能滞后于 DB，回表校验并剔除已下架/删除的商品，保持 ES 相关度顺序
+            Map<Long, Spu> byId = spuService.listByIds(ids).stream()
+                    .collect(Collectors.toMap(Spu::getId, Function.identity()));
+            List<Spu> ordered = ids.stream().map(byId::get).filter(Objects::nonNull).toList();
+            return ordered.isEmpty() ? null : ordered;
+        } catch (Exception e) {
+            log.warn("客服商品搜索 ES 路径失败，转 DB 兜底: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * DB 兜底路径：关键词拆词，多词任一模糊匹配名称/副标题/品牌/描述（长尾词只要命中一词即返回），
+     * 保留上架 + 审核通过 + 商家范围过滤，按销量排序。
+     */
+    private List<Spu> searchByDb(String keyword) {
+        LambdaQueryWrapper<Spu> wrapper = new LambdaQueryWrapper<Spu>()
+                .eq(Spu::getStatus, 1)
+                .eq(Spu::getAuditStatus, 1)
+                .eq(merchantId != null, Spu::getMerchantId, merchantId);
+        List<String> terms = tokenize(keyword);
+        if (!terms.isEmpty()) {
+            wrapper.and(w -> {
+                for (int i = 0; i < terms.size(); i++) {
+                    String term = terms.get(i);
+                    if (i == 0) {
+                        w.like(Spu::getName, term).or().like(Spu::getSubTitle, term)
+                                .or().like(Spu::getBrand, term).or().like(Spu::getDescription, term);
+                    } else {
+                        w.or().like(Spu::getName, term).or().like(Spu::getSubTitle, term)
+                                .or().like(Spu::getBrand, term).or().like(Spu::getDescription, term);
+                    }
+                }
+            });
+        }
+        return spuService.list(wrapper.orderByDesc(Spu::getSalesCount)
+                .last("LIMIT " + PRODUCT_SEARCH_LIMIT));
+    }
+
+    /** 拆词：按非字母数字字符切分，中文连续字符整体成词；去重、丢弃单字符词，最多 5 个词 */
+    private List<String> tokenize(String keyword) {
+        if (StrUtil.isBlank(keyword)) {
+            return List.of();
+        }
+        return Arrays.stream(keyword.trim().split("[^0-9a-zA-Z\\u4e00-\\u9fa5]+"))
+                .map(String::trim)
+                .filter(s -> s.length() >= 2)
+                .distinct()
+                .limit(5)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 查询指定商品的在售规格列表（规格名、价格、库存）。
+     * 当用户询问商品规格/配置/价格/库存，或用户需要选择规格时使用；通常配合 searchProducts 返回的商品ID。
+     */
+    @Tool(description = "查询指定商品的在售规格列表（规格名、价格、库存）。当用户询问商品规格、价格、有没有货，或用户要挑选规格时使用；商品ID可从商品搜索结果中获得")
+    public String queryProductSkus(@ToolParam(description = "商品ID（SPU ID）") Long spuId) {
+        if (spuId == null) {
+            return wrap("规格数据", "商品ID不能为空");
+        }
+        Spu spu = spuService.getById(spuId);
+        if (spu == null) {
+            return wrap("规格数据", "商品不存在");
+        }
+        List<Sku> skus = skuService.lambdaQuery()
+                .eq(Sku::getSpuId, spuId)
+                .eq(Sku::getStatus, 1)
+                .orderByAsc(Sku::getPrice)
+                .list();
+        if (skus.isEmpty()) {
+            return wrap("规格数据", "该商品暂无在售规格");
+        }
+        String body = skus.stream()
+                .map(s -> "SKU ID:" + s.getId()
+                        + " 规格:" + s.getSkuName()
+                        + " 价格:" + (s.getPrice() != null ? s.getPrice().toPlainString() : "?") + "元"
+                        + " 库存:" + (s.getStock() != null ? s.getStock() : "?"))
+                .collect(Collectors.joining("\n"));
+        return wrap("规格数据", "商品：" + spu.getName() + "\n" + body);
     }
 
     /**
@@ -254,6 +380,29 @@ public class CustomerServiceTools {
         return "已为该请求生成待确认操作，请告知用户确认。";
     }
 
+    /**
+     * 查询当前用户的收货地址列表（地址ID、收货人、电话、地区、详细地址、默认标记）。
+     * 当用户要下单、需要确认收货地址或修改地址时使用。
+     */
+    @Tool(description = "查询当前用户的收货地址列表（地址ID、收货人、电话、地区、详细地址、是否默认）。当用户要下单或需要确认收货地址时使用")
+    public String queryMyAddresses() {
+        List<com.xs.sheepaimall.vo.ShippingAddressVO> addresses = shippingAddressService.listByUserId(userId);
+        if (addresses.isEmpty()) {
+            return wrap("地址数据", "当前用户还没有收货地址，请引导用户先添加收货地址");
+        }
+        String body = addresses.stream()
+                .map(a -> "地址ID:" + a.getId()
+                        + " " + a.getReceiverName()
+                        + " " + a.getReceiverPhone()
+                        + " " + a.getProvince() + a.getCity() + a.getDistrict() + a.getDetailAddress()
+                        + (a.getIsDefault() != null && a.getIsDefault() == 1 ? "（默认地址）" : ""))
+                .collect(Collectors.joining("\n"));
+        return wrap("地址数据", body);
+    }
+
+    // 注意：售后申请不提供 LLM 工具——订单 ID 为 19 位长数字，LLM 转述不可靠（实测频繁匹配失败）。
+    // 购买/售后统一走卡片自助通路：agent 只展示订单卡片，用户点卡片「申请售后」按钮发起（ID 服务端字符串化）。
+
     // ==================== 状态工具（即时执行，不进确认闸） ====================
 
     /**
@@ -299,12 +448,13 @@ public class CustomerServiceTools {
         goodsCardQueue.offer(card);
     }
 
-    /** 订单卡片入队 */
+    /** 订单卡片入队（status 供前端收敛售后类型：1=仅退款，2/3=退货退款/换货） */
     private void offerOrderCard(OrderInfo order) {
         Map<String, Object> card = new LinkedHashMap<>();
         card.put("orderId", order.getId());
         card.put("orderNo", order.getOrderNo());
-        card.put("statusText", statusText(order.getStatus()));
+        card.put("status", order.getStatus());
+        card.put("statusText", statusText(order.getStatus()) + orderSuffix(order));
         card.put("totalAmount", order.getTotalAmount() != null ? order.getTotalAmount().toPlainString() : null);
         card.put("createTime", order.getCreateTime() != null ? order.getCreateTime().toString() : null);
         orderCardQueue.offer(card);
@@ -317,6 +467,17 @@ public class CustomerServiceTools {
             content = content.substring(0, MAX_OUTPUT_LENGTH) + "\n（内容过长已截断）";
         }
         return "┌─" + title + "─┐\n" + content + "\n└────┘";
+    }
+
+    /** 订单售后/退款状态后缀（已退款优先于售后中），让 Agent 侧订单状态及时反映售后进展 */
+    private String orderSuffix(OrderInfo order) {
+        if (order.getRefundStatus() != null && order.getRefundStatus() == 2) {
+            return "（已退款）";
+        }
+        if (!afterSaleService.pendingStatusByOrderIds(List.of(order.getId())).isEmpty()) {
+            return "（售后中）";
+        }
+        return "";
     }
 
     /** 订单状态文案，与 OrderServiceImpl 保持一致 */

@@ -79,6 +79,10 @@ public class SpuDocument {
     @Field(type = FieldType.Integer)
     private Integer status;
 
+    /** 所属商家 ID（客服 Agent 商家会话检索过滤用） */
+    @Field(type = FieldType.Long)
+    private Long merchantId;
+
     /** 创建时间 */
     @Field(type = FieldType.Date, format = {}, pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;

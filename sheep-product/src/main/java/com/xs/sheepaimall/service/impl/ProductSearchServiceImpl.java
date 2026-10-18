@@ -148,6 +148,10 @@ public class ProductSearchServiceImpl implements ProductSearchService {
             if (dto.getCategoryId() != null) {
                 b.filter(f -> f.term(t -> t.field("categoryId").value(dto.getCategoryId())));
             }
+            // 商家过滤：客服 Agent 商家会话检索等场景（字段为 Long，term 匹配）
+            if (dto.getMerchantId() != null) {
+                b.filter(f -> f.term(t -> t.field("merchantId").value(dto.getMerchantId())));
+            }
             // 价格区间筛选：minPrice >= 用户下限，maxPrice <= 用户上限
             if (dto.getMinPrice() != null) {
                 b.filter(f -> f.range(r -> r.field("minPrice")

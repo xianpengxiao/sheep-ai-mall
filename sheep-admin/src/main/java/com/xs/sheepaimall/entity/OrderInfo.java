@@ -55,6 +55,9 @@ public class OrderInfo {
     @Schema(description = "取消时间")
     private LocalDateTime cancelTime;
 
+    @Schema(description = "退款状态：0=无 1=退款中 2=已退款")
+    private Integer refundStatus;
+
     @Schema(description = "创建时间")
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;

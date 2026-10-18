@@ -21,6 +21,12 @@ public interface PendingOperationService {
     /** 操作类型：加入购物车 */
     String OP_ADD_CART = "ADD_CART";
 
+    /** 操作类型：创建待支付订单（AI 客服代下单，确认后用户自行支付） */
+    String OP_CREATE_ORDER = "CREATE_ORDER";
+
+    /** 操作类型：申请售后（退货退款/仅退款/换货，确认后创建待处理售后单，退款由商家处理） */
+    String OP_AFTER_SALE = "AFTER_SALE";
+
     /**
      * 创建待确认操作单（双写 Redis + MySQL，5 分钟过期）
      *
@@ -44,4 +50,23 @@ public interface PendingOperationService {
      * @param currentUserId 当前登录用户ID（用于归属校验）
      */
     void confirm(String operationId, boolean approve, Long currentUserId);
+
+    /**
+     * 批量查询操作单最新状态（供前端刷新历史确认卡时回显）。
+     * 仅返回归属当前用户且仍在有效期内的操作单状态。
+     *
+     * @param operationIds 操作单ID列表
+     * @param currentUserId 当前登录用户ID（归属校验）
+     * @return operationId -> 状态描述（PENDING=待确认 / DONE=已执行 / CANCELLED=已取消 / EXPIRED=已过期）
+     */
+    java.util.Map<String, String> queryStates(java.util.List<String> operationIds, Long currentUserId);
+
+    /**
+     * 是否已存在同订单的待确认售后操作单（防同一张订单卡片重复生成多张确认卡）。
+     *
+     * @param userId  归属用户
+     * @param orderId 订单ID（匹配 argsJson 中的 orderId）
+     * @return true=存在待确认售后操作单
+     */
+    boolean existsPendingAfterSaleOp(Long userId, Long orderId);
 }

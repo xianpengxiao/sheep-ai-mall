@@ -48,6 +48,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -62,6 +63,8 @@ public class ChatServiceImpl implements ChatService {
 
     private static final String REDIS_MSG_KEY = "chat:msg:";
     private static final long MSG_TTL_HOURS = 168;
+    /** 卡片 ID 类字段：下发前统一转字符串，防 19 位雪花 ID 在前端 JSON.parse 精度丢失 */
+    private static final List<String> CARD_ID_KEYS = List.of("spuId", "skuId", "orderId");
 
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
@@ -119,6 +122,15 @@ public class ChatServiceImpl implements ChatService {
 
     @Autowired
     private SkuService skuService;
+
+    @Autowired
+    private com.xs.sheepaimall.service.SpuService spuService;
+
+    @Autowired
+    private com.xs.sheepaimall.service.ShippingAddressService shippingAddressService;
+
+    @Autowired
+    private com.xs.sheepaimall.service.AfterSaleService afterSaleService;
 
     @Autowired
     private PendingOperationService pendingOperationService;
@@ -226,11 +238,26 @@ public class ChatServiceImpl implements ChatService {
                     String aiContent = fullResponse.toString();
                     LocalDateTime aiTime = LocalDateTime.now();
 
+                    // 先收集本次下发的操作单标记与卡片数据（一处收集，两处复用：入库 tool_calls + SSE 下发）
+                    List<Map<String, Object>> pendingOpMarkers = new ArrayList<>();
+                    ChatPendingOp op;
+                    while ((op = pendingOpQueue.poll()) != null) {
+                        Map<String, Object> marker = new LinkedHashMap<>();
+                        marker.put("operationId", op.getId());
+                        marker.put("displayText", op.getDisplayText());
+                        marker.put("opType", op.getOpType());
+                        pendingOpMarkers.add(marker);
+                    }
+                    List<Map<String, Object>> goodsCards = drainCards(goodsCardQueue, 2);
+                    List<Map<String, Object>> orderCards = drainCards(orderCardQueue, 2);
+                    // 卡片与操作单随消息持久化（tool_calls 扩展 JSON），刷新/重进后可恢复展示
+                    String toolCalls = buildToolCallsJson(goodsCards, orderCards, pendingOpMarkers);
+
                     // AI 回复：Redis + MySQL
                     if (redisOk) {
-                        saveMessageToRedis(sessionId, 1, aiContent, aiTime);
+                        saveMessageToRedis(sessionId, 1, aiContent, aiTime, toolCalls);
                     }
-                    saveMessageToMySQL(sessionId, 1, aiContent, aiTime);
+                    saveMessageToMySQL(sessionId, 1, aiContent, aiTime, toolCalls);
 
                     updateSession(session, userContent);
 
@@ -243,18 +270,13 @@ public class ChatServiceImpl implements ChatService {
                     }
 
                     // 下发待确认操作单结构化标记，前端解析后渲染确认卡片
-                    ChatPendingOp op;
-                    while ((op = pendingOpQueue.poll()) != null) {
-                        Map<String, Object> marker = new LinkedHashMap<>();
-                        marker.put("operationId", op.getId());
-                        marker.put("displayText", op.getDisplayText());
-                        marker.put("opType", op.getOpType());
+                    for (Map<String, Object> marker : pendingOpMarkers) {
                         sink.tryEmitNext("\n[[PENDING_OP:" + JSONUtil.toJsonStr(marker) + "]]");
                     }
 
-                    // 下发商品/订单卡片结构化标记（各最多 2 条），前端解析渲染卡片
-                    drainCardMarkers(sink, goodsCardQueue, "GOODS_CARDS", 2);
-                    drainCardMarkers(sink, orderCardQueue, "ORDER_CARDS", 2);
+                    // 下发商品/订单卡片结构化标记，前端解析渲染卡片
+                    emitCardMarker(sink, "GOODS_CARDS", goodsCards);
+                    emitCardMarker(sink, "ORDER_CARDS", orderCards);
 
                     // 画像闭环（进程内异步，不再走 MQ）
                     CompletableFuture.runAsync(() -> userProfileService.updateAfterMessage(currentUserId, sessionId));
@@ -295,17 +317,48 @@ public class ChatServiceImpl implements ChatService {
         return Flux.just(tip);
     }
 
-    /** 从卡片队列取前 max 条，组装为单个 [[MARKER:[{...}]]] 结构化标记下发（无数据则不下发） */
-    private void drainCardMarkers(Sinks.Many<String> sink, ConcurrentLinkedQueue<Map<String, Object>> queue,
-                                  String markerName, int max) {
+    /**
+     * 从卡片队列取前 max 条并做 ID 字符串化（雪花 ID 19 位，裸数字 JSON 在前端 JSON.parse 精度丢失）。
+     * 只收集不发送；返回空列表表示无数据。
+     */
+    private List<Map<String, Object>> drainCards(ConcurrentLinkedQueue<Map<String, Object>> queue, int max) {
         List<Map<String, Object>> cards = new ArrayList<>();
         Map<String, Object> card;
         while (cards.size() < max && (card = queue.poll()) != null) {
-            cards.add(card);
+            Map<String, Object> safe = new LinkedHashMap<>(card);
+            for (String idKey : CARD_ID_KEYS) {
+                Object v = safe.get(idKey);
+                if (v != null && !(v instanceof String)) {
+                    safe.put(idKey, String.valueOf(v));
+                }
+            }
+            cards.add(safe);
         }
+        return cards;
+    }
+
+    /** 将卡片列表组装为 [[MARKER:[{...}]]] 结构化标记下发（空列表则不下发） */
+    private void emitCardMarker(Sinks.Many<String> sink, String markerName, List<Map<String, Object>> cards) {
         if (!cards.isEmpty()) {
             sink.tryEmitNext("\n[[" + markerName + ":" + JSONUtil.toJsonStr(cards) + "]]");
         }
+    }
+
+    /**
+     * 组装 tool_calls 扩展 JSON（随消息持久化，刷新后前端恢复卡片/确认卡）：
+     * {"goodsCards":[...],"orderCards":[...],"pendingOps":[...]}，仅包含非空段；全空返回 null。
+     */
+    private String buildToolCallsJson(List<Map<String, Object>> goodsCards,
+                                      List<Map<String, Object>> orderCards,
+                                      List<Map<String, Object>> pendingOps) {
+        if (goodsCards.isEmpty() && orderCards.isEmpty() && pendingOps.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> toolCalls = new LinkedHashMap<>();
+        if (!goodsCards.isEmpty()) toolCalls.put("goodsCards", goodsCards);
+        if (!orderCards.isEmpty()) toolCalls.put("orderCards", orderCards);
+        if (!pendingOps.isEmpty()) toolCalls.put("pendingOps", pendingOps);
+        return JSONUtil.toJsonStr(toolCalls);
     }
 
     /**
@@ -422,8 +475,174 @@ public class ChatServiceImpl implements ChatService {
         args.put("skuId", skuId);
         args.put("quantity", qty);
         String displayText = "加入购物车：" + sku.getSkuName() + " x" + qty;
-        return pendingOperationService.create(currentUserId, sessionId,
+        ChatPendingOp op = pendingOperationService.create(currentUserId, sessionId,
                 PendingOperationService.OP_ADD_CART, args, displayText);
+        // 操作单随所属 AI 消息持久化（tool_calls.pendingOps），刷新后确认卡可恢复
+        appendPendingOpToLastAiMessage(sessionId, op);
+        return op;
+    }
+
+    @Override
+    public ChatPendingOp createAfterSaleOp(Long orderId, String type, String reason, Long sessionId) {
+        Long currentUserId = UserContext.getUserId();
+        // 与用户端申请同一套校验（归属/状态-类型映射/无重复待处理单），不合法抛业务异常
+        com.xs.sheepaimall.entity.OrderInfo order = afterSaleService.validate(currentUserId, orderId, type);
+        // 幂等：同订单已有待确认售后操作单则拒绝，防止同一张卡片重复生成多张确认卡
+        if (pendingOperationService.existsPendingAfterSaleOp(currentUserId, orderId)) {
+            throw new BizException("该订单已有待确认的售后申请，请在上方确认卡中确认或等待处理");
+        }
+        Map<String, Object> args = new LinkedHashMap<>();
+        args.put("orderId", orderId);
+        args.put("type", type);
+        args.put("reason", reason);
+        String typeText = switch (type) {
+            case com.xs.sheepaimall.service.AfterSaleService.TYPE_REFUND_ONLY -> "仅退款";
+            case com.xs.sheepaimall.service.AfterSaleService.TYPE_EXCHANGE -> "换货";
+            default -> "退货退款";
+        };
+        String displayText = "申请售后：" + typeText + " 订单 " + order.getOrderNo()
+                + (reason != null && !reason.isBlank() ? "，原因：" + reason : "");
+        ChatPendingOp op = pendingOperationService.create(currentUserId, sessionId,
+                PendingOperationService.OP_AFTER_SALE, args, displayText);
+        // 操作单随所属 AI 消息持久化（tool_calls.pendingOps），刷新后确认卡可恢复
+        appendPendingOpToLastAiMessage(sessionId, op);
+        return op;
+    }
+
+    @Override
+    public com.xs.sheepaimall.vo.ChatTimelineVO getTimeline(Long merchantId, Long beforeId, int size) {
+        Long currentUserId = UserContext.getUserId();
+        // 该聊天对象的全部会话（单会话模型下通常 1 条；历史遗留多会话一并聚合）
+        List<ChatSession> sessions = chatSessionMapper.selectList(
+                new LambdaQueryWrapper<ChatSession>()
+                        .eq(ChatSession::getUserId, currentUserId)
+                        .eq(merchantId != null, ChatSession::getMerchantId, merchantId)
+                        .isNull(merchantId == null, ChatSession::getMerchantId));
+        com.xs.sheepaimall.vo.ChatTimelineVO vo = new com.xs.sheepaimall.vo.ChatTimelineVO();
+        ChatSession current = sessions.stream()
+                .max(java.util.Comparator.comparing(
+                        s -> s.getLastMessageAt() != null ? s.getLastMessageAt() : java.time.LocalDateTime.MIN))
+                .orElse(null);
+        vo.setCurrentSessionId(current != null ? current.getId() : null);
+        vo.setCurrentSessionServiceMode(current != null ? current.getServiceMode() : null);
+        if (sessions.isEmpty()) {
+            vo.setMessages(List.of());
+            vo.setHasMore(false);
+            return vo;
+        }
+        List<Long> sessionIds = sessions.stream().map(ChatSession::getId).toList();
+        int pageSize = size <= 0 ? 20 : Math.min(size, 50);
+        List<ChatMessage> messages = chatMessageMapper.selectList(
+                new LambdaQueryWrapper<ChatMessage>()
+                        .in(ChatMessage::getSessionId, sessionIds)
+                        .lt(beforeId != null, ChatMessage::getId, beforeId)
+                        .orderByDesc(ChatMessage::getId)
+                        .last("LIMIT " + (pageSize + 1)));
+        boolean hasMore = messages.size() > pageSize;
+        if (hasMore) {
+            messages = messages.subList(0, pageSize);
+        }
+        Collections.reverse(messages);
+        vo.setMessages(messages.stream().map(msg -> {
+            com.xs.sheepaimall.vo.ChatMessageVO msgVo = new com.xs.sheepaimall.vo.ChatMessageVO();
+            BeanUtil.copyProperties(msg, msgVo);
+            return msgVo;
+        }).collect(Collectors.toList()));
+        vo.setHasMore(hasMore);
+        return vo;
+    }
+
+    @Override
+    public List<Map<String, Object>> listGoodsSkus(Long spuId) {
+        List<com.xs.sheepaimall.entity.Sku> skus = skuService.lambdaQuery()
+                .eq(com.xs.sheepaimall.entity.Sku::getSpuId, spuId)
+                .eq(com.xs.sheepaimall.entity.Sku::getStatus, 1)
+                .orderByAsc(com.xs.sheepaimall.entity.Sku::getPrice)
+                .list();
+        return skus.stream().map(s -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("skuId", String.valueOf(s.getId()));
+            m.put("skuName", s.getSkuName());
+            m.put("price", s.getPrice() != null ? s.getPrice().toPlainString() : null);
+            m.put("stock", s.getStock());
+            return m;
+        }).collect(Collectors.toList());
+    }
+
+    @Override
+    public ChatPendingOp createOrderOp(Long spuId, Long skuId, Integer quantity,
+                                       Long addressId, Long sessionId) {
+        Long currentUserId = UserContext.getUserId();
+        com.xs.sheepaimall.entity.Spu spu = spuService.getById(spuId);
+        if (spu == null || spu.getStatus() == null || spu.getStatus() != 1
+                || spu.getAuditStatus() == null || spu.getAuditStatus() != 1) {
+            throw new BizException("该商品不存在或未上架");
+        }
+        com.xs.sheepaimall.entity.Sku sku = skuService.getById(skuId);
+        if (sku == null || !sku.getSpuId().equals(spuId)
+                || sku.getStatus() == null || sku.getStatus() != 1) {
+            throw new BizException("该商品规格不存在或已下架");
+        }
+        int qty = quantity == null || quantity <= 0 ? 1 : Math.min(quantity, 99);
+        if (sku.getStock() != null && sku.getStock() < qty) {
+            throw new BizException("该规格库存不足（剩余 " + sku.getStock() + " 件）");
+        }
+        // getDetail 内部校验地址归属当前用户
+        com.xs.sheepaimall.vo.ShippingAddressVO address =
+                shippingAddressService.getDetail(addressId, currentUserId);
+        Map<String, Object> args = new LinkedHashMap<>();
+        args.put("spuId", spuId);
+        args.put("skuId", skuId);
+        args.put("quantity", qty);
+        args.put("addressId", addressId);
+        String fullAddr = address.getProvince() + address.getCity() + address.getDistrict() + " " + address.getDetailAddress();
+        String amount = sku.getPrice() != null
+                ? sku.getPrice().multiply(java.math.BigDecimal.valueOf(qty)).toPlainString() : "?";
+        String displayText = "创建待支付订单：" + spu.getName() + " " + sku.getSkuName() + " x" + qty
+                + "，收货：" + address.getReceiverName() + " " + fullAddr
+                + "，预估 ¥" + amount + "（以订单页为准）";
+        ChatPendingOp op = pendingOperationService.create(currentUserId, sessionId,
+                PendingOperationService.OP_CREATE_ORDER, args, displayText);
+        // 操作单随所属 AI 消息持久化（tool_calls.pendingOps），刷新后确认卡可恢复
+        appendPendingOpToLastAiMessage(sessionId, op);
+        return op;
+    }
+
+    /** 把操作单标记追加到会话最新一条 AI 消息的 tool_calls.pendingOps（无则新建 JSON；解析失败则覆盖重建） */
+    private void appendPendingOpToLastAiMessage(Long sessionId, ChatPendingOp op) {
+        try {
+            ChatMessage lastAi = chatMessageMapper.selectOne(
+                    new LambdaQueryWrapper<ChatMessage>()
+                            .eq(ChatMessage::getSessionId, sessionId)
+                            .eq(ChatMessage::getRole, 1)
+                            .orderByDesc(ChatMessage::getId)
+                            .last("LIMIT 1"));
+            if (lastAi == null) {
+                return;
+            }
+            Map<String, Object> toolCalls;
+            if (StrUtil.isNotBlank(lastAi.getToolCalls())) {
+                try {
+                    toolCalls = new LinkedHashMap<>(JSONUtil.parseObj(lastAi.getToolCalls()));
+                } catch (Exception e) {
+                    toolCalls = new LinkedHashMap<>();
+                }
+            } else {
+                toolCalls = new LinkedHashMap<>();
+            }
+            @SuppressWarnings("unchecked")
+            List<Object> pendingOps = (List<Object>) toolCalls.computeIfAbsent("pendingOps", k -> new ArrayList<>());
+            Map<String, Object> marker = new LinkedHashMap<>();
+            marker.put("operationId", op.getId());
+            marker.put("displayText", op.getDisplayText());
+            marker.put("opType", op.getOpType());
+            pendingOps.add(marker);
+            chatMessageMapper.update(null, new LambdaUpdateWrapper<ChatMessage>()
+                    .eq(ChatMessage::getId, lastAi.getId())
+                    .set(ChatMessage::getToolCalls, JSONUtil.toJsonStr(toolCalls)));
+        } catch (Exception e) {
+            log.warn("操作单标记持久化到消息失败 sessionId={}: {}", sessionId, e.getMessage());
+        }
     }
 
     // ======================== Redis（带降级） ========================
@@ -456,17 +675,26 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
-    /** 消息存入 Redis */
-    private void saveMessageToRedis(Long sessionId, int role, String content, LocalDateTime time) {
+    /** 消息存入 Redis（toolCalls 为扩展卡片/操作单 JSON，可空） */
+    private void saveMessageToRedis(Long sessionId, int role, String content, LocalDateTime time,
+                                    String toolCalls) {
         safeRedisOp(() -> {
             String key = REDIS_MSG_KEY + sessionId;
             Map<String, Object> msg = new HashMap<>();
             msg.put("role", role);
             msg.put("content", content);
             msg.put("createTime", time.toString());
+            if (StrUtil.isNotBlank(toolCalls)) {
+                msg.put("toolCalls", toolCalls);
+            }
             stringRedisTemplate.opsForList().leftPush(key, JSONUtil.toJsonStr(msg));
             stringRedisTemplate.expire(key, Duration.ofHours(MSG_TTL_HOURS));
         });
+    }
+
+    /** 消息存入 Redis（无扩展数据的老调用入口） */
+    private void saveMessageToRedis(Long sessionId, int role, String content, LocalDateTime time) {
+        saveMessageToRedis(sessionId, role, content, time, null);
     }
 
     /** 组装 AI 上下文：优先 Redis，回退 MySQL */
@@ -495,7 +723,10 @@ public class ChatServiceImpl implements ChatService {
             historyMsgs = getHistoryFromMySQL(sessionId, maxHistory);
         }
 
-        // maxHistory 条数限制之上，再按 maxContextTokens 预算截断（字符/4估算 token），超出从旧消息丢弃
+        // 时间分层：近小时全文窗口（带 [MM-dd HH:mm] 前缀）+ 更早按天保留样例（带 [MM-dd] 前缀），
+        // 再按 maxContextTokens 预算截断（字符/4估算 token），超出从旧消息丢弃
+        historyMsgs = layerHistoryByTime(historyMsgs);
+
         int tokenBudget = csAgentConfigService.getConfig().getMaxContextTokens();
         if (tokenBudget > 0) {
             int estimated = 0;
@@ -528,6 +759,71 @@ public class ChatServiceImpl implements ChatService {
         return aiMessages;
     }
 
+    /**
+     * 历史消息按时间分层（设计 D3）：
+     * ① 全文窗口：createTime 在最近 contextRecentHours 小时内的消息全量保留，内容加 "[MM-dd HH:mm] " 前缀；
+     * ② 日期窗口：更早的消息按天分组，每天最多保留 contextDailyKeep 条（取当天最后几条）、
+     *    最多回溯 contextMaxDays 天，内容加 "[MM-dd] " 前缀；
+     * ③ 超出窗口的消息丢弃（其后仍有 maxHistory 与 token 预算总闸兜底）。
+     * contextRecentHours<=0 时关闭分层，退回原平铺行为。
+     */
+    private List<Map<String, Object>> layerHistoryByTime(List<Map<String, Object>> historyMsgs) {
+        int recentHours = chatProperties.getContextRecentHours();
+        if (recentHours <= 0) {
+            return historyMsgs;
+        }
+        int dailyKeep = Math.max(chatProperties.getContextDailyKeep(), 0);
+        int maxDays = Math.max(chatProperties.getContextMaxDays(), 1);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime recentCutoff = now.minusHours(recentHours);
+        LocalDate oldestDay = now.toLocalDate().minusDays(maxDays - 1L);
+        java.time.format.DateTimeFormatter hm = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm");
+        java.time.format.DateTimeFormatter md = java.time.format.DateTimeFormatter.ofPattern("MM-dd");
+
+        List<Map<String, Object>> recent = new ArrayList<>();
+        Map<LocalDate, List<Map<String, Object>>> daily = new LinkedHashMap<>();
+        for (Map<String, Object> msg : historyMsgs) {
+            LocalDateTime t = parseMsgTime(msg.get("createTime"));
+            if (t == null || !t.isBefore(recentCutoff)) {
+                // 全文窗口（时间缺失的保守归入）
+                if (t != null) {
+                    msg.put("content", "[" + t.format(hm) + "] " + msg.get("content"));
+                }
+                recent.add(msg);
+            } else if (dailyKeep > 0 && !t.toLocalDate().isBefore(oldestDay)) {
+                daily.computeIfAbsent(t.toLocalDate(), k -> new ArrayList<>()).add(msg);
+            }
+            // 超出日期窗口的消息直接丢弃
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map.Entry<LocalDate, List<Map<String, Object>>> entry : daily.entrySet()) {
+            List<Map<String, Object>> dayMsgs = entry.getValue();
+            int from = Math.max(0, dayMsgs.size() - dailyKeep);
+            for (int i = from; i < dayMsgs.size(); i++) {
+                Map<String, Object> msg = dayMsgs.get(i);
+                msg.put("content", "[" + entry.getKey().format(md) + "] " + msg.get("content"));
+                result.add(msg);
+            }
+        }
+        result.addAll(recent);
+        return result;
+    }
+
+    /** 解析消息时间：兼容 Redis JSON 中的 ISO 字符串与 MySQL 路径的 LocalDateTime */
+    private LocalDateTime parseMsgTime(Object value) {
+        if (value instanceof LocalDateTime t) {
+            return t;
+        }
+        if (value instanceof String str && !str.isBlank()) {
+            try {
+                return LocalDateTime.parse(str);
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     /** 从 MySQL 加载历史消息（用于上下文组装） */
     private List<Map<String, Object>> getHistoryFromMySQL(Long sessionId, int maxHistory) {
         List<ChatMessage> messages = chatMessageMapper.selectList(
@@ -541,18 +837,26 @@ public class ChatServiceImpl implements ChatService {
             Map<String, Object> map = new HashMap<>();
             map.put("role", msg.getRole());
             map.put("content", msg.getContent());
+            map.put("createTime", msg.getCreateTime());
             return map;
         }).collect(Collectors.toList());
     }
 
-    /** 直接存消息到 MySQL */
-    private void saveMessageToMySQL(Long sessionId, int role, String content, LocalDateTime time) {
+    /** 直接存消息到 MySQL（toolCalls 为扩展卡片/操作单 JSON，可空） */
+    private void saveMessageToMySQL(Long sessionId, int role, String content, LocalDateTime time,
+                                    String toolCalls) {
         ChatMessage msg = new ChatMessage();
         msg.setSessionId(sessionId);
         msg.setRole(role);
         msg.setContent(content);
+        msg.setToolCalls(toolCalls);
         msg.setCreateTime(time);
         chatMessageMapper.insert(msg);
+    }
+
+    /** 直接存消息到 MySQL（无扩展数据的老调用入口） */
+    private void saveMessageToMySQL(Long sessionId, int role, String content, LocalDateTime time) {
+        saveMessageToMySQL(sessionId, role, content, time, null);
     }
 
     /** 尝试从 Redis 填充会话摘要信息，失败返回 false */

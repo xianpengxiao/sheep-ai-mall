@@ -76,6 +76,15 @@ public interface FundService extends IService<FundFlow> {
     /** 订单确认收货后计算佣金（由 OrderServiceImpl 调用） */
     void settleOrderCommission(Long orderId);
 
+    /**
+     * 售后退款扣回：给商家记 refund_deduct 支出流水并扣减可用余额（售后退款联动用）。
+     *
+     * @param merchantId 商家ID
+     * @param orderId    订单ID（流水业务ID）
+     * @param amount     扣回金额
+     */
+    void refundDeduct(Long merchantId, Long orderId, java.math.BigDecimal amount);
+
     // ===== 8. 商家端方法（merchantId 从 UserContext 获取） =====
 
     /** 查询商家自己的结算账户（脱敏） */

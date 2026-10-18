@@ -55,6 +55,9 @@ public class PaymentServiceImpl extends ServiceImpl<PaymentRecordMapper, Payment
     @Autowired(required = false)
     private JsapiService jsapiService;
 
+    @Autowired(required = false)
+    private com.wechat.pay.java.service.refund.RefundService refundService;
+
     @Autowired
     private WechatPayProperties wechatPayProperties;
 
@@ -246,6 +249,84 @@ public class PaymentServiceImpl extends ServiceImpl<PaymentRecordMapper, Payment
         log.info("模拟支付成功 orderId={} orderNo={} mockTransactionId={} payAmount={}",
                 orderId, order.getOrderNo(), mockTransactionId, payAmount);
         return record;
+    }
+
+    // ==================== 售后退款 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void refund(Long orderId, BigDecimal amount) {
+        OrderInfo order = orderService.getById(orderId);
+        if (order == null) {
+            throw new BizException(ResultCode.NOT_FOUND.getCode(), "订单不存在");
+        }
+        // 幂等兜底：已存在退款记录（模拟退款记录 or 微信退款单号 R+orderNo）直接拒绝，防重复退款
+        Long refundedCount = this.count(new LambdaQueryWrapper<PaymentRecord>()
+                .eq(PaymentRecord::getOrderId, orderId)
+                .and(w -> w.eq(PaymentRecord::getPayMethod, "MOCK_REFUND")
+                        .or().eq(PaymentRecord::getTransactionId, "R" + order.getOrderNo())));
+        if (refundedCount != null && refundedCount > 0) {
+            throw new BizException("该订单已退款，请勿重复退款");
+        }
+        PaymentRecord record = this.getOne(new LambdaQueryWrapper<PaymentRecord>()
+                .eq(PaymentRecord::getOrderId, orderId)
+                .eq(PaymentRecord::getStatus, "SUCCESS")
+                .orderByDesc(PaymentRecord::getCreateTime)
+                .last("LIMIT 1"));
+        if (record == null) {
+            throw new BizException("未找到成功的支付记录，无法退款");
+        }
+        // 模拟支付：资金未真实流转，本地落一条退款记录即可
+        if ("MOCK".equals(record.getPayMethod())
+                || (record.getTransactionId() != null && record.getTransactionId().startsWith("MOCK_"))) {
+            PaymentRecord refundRecord = new PaymentRecord();
+            refundRecord.setOrderId(orderId);
+            refundRecord.setOrderNo(order.getOrderNo());
+            refundRecord.setUserId(order.getUserId());
+            refundRecord.setTransactionId("MOCK_REFUND_" + System.currentTimeMillis());
+            refundRecord.setPayMethod("MOCK_REFUND");
+            refundRecord.setPayAmount(amount);
+            refundRecord.setStatus("SUCCESS");
+            refundRecord.setPayTime(LocalDateTime.now());
+            this.save(refundRecord);
+            log.info("模拟支付订单退款成功 orderId={} amount={}", orderId, amount);
+            return;
+        }
+        // 微信支付：调 V3 退款接口（证书未配置/请求失败抛异常，由上层事务回滚，可重试）
+        if (refundService == null) {
+            throw new BizException("微信支付退款服务未启用（wechat.pay.enabled=false），无法退微信支付订单");
+        }
+        try {
+            com.wechat.pay.java.service.refund.model.CreateRequest req =
+                    new com.wechat.pay.java.service.refund.model.CreateRequest();
+            req.setOutRefundNo("R" + order.getOrderNo());
+            req.setTransactionId(record.getTransactionId());
+            req.setReason("售后退款");
+            com.wechat.pay.java.service.refund.model.AmountReq amountReq =
+                    new com.wechat.pay.java.service.refund.model.AmountReq();
+            amountReq.setRefund(amount.multiply(BigDecimal.valueOf(100)).longValueExact());
+            amountReq.setTotal(record.getPayAmount().multiply(BigDecimal.valueOf(100)).longValueExact());
+            amountReq.setCurrency("CNY");
+            req.setAmount(amountReq);
+            refundService.create(req);
+            // 落退款记录：transactionId 用退款单号（R+orderNo），供幂等兜底与对账识别
+            PaymentRecord refundRecord = new PaymentRecord();
+            refundRecord.setOrderId(orderId);
+            refundRecord.setOrderNo(order.getOrderNo());
+            refundRecord.setUserId(order.getUserId());
+            refundRecord.setTransactionId("R" + order.getOrderNo());
+            refundRecord.setPayMethod("WECHAT_REFUND");
+            refundRecord.setPayAmount(amount);
+            refundRecord.setStatus("SUCCESS");
+            refundRecord.setPayTime(LocalDateTime.now());
+            this.save(refundRecord);
+            log.info("微信退款申请已受理 orderId={} outRefundNo=R{}", orderId, order.getOrderNo());
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("微信退款失败 orderId={}", orderId, e);
+            throw new BizException("微信退款失败：" + e.getMessage());
+        }
     }
 
     // ==================== 内部方法 ====================

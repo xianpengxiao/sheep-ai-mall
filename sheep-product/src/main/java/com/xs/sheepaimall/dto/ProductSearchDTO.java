@@ -16,6 +16,9 @@ public class ProductSearchDTO {
     @Schema(description = "分类ID 筛选", example = "1")
     private Long categoryId;
 
+    @Schema(description = "商家ID 筛选（客服 Agent 商家会话检索等场景）", example = "1001")
+    private Long merchantId;
+
     @Schema(description = "最低价格", example = "99.00")
     private BigDecimal minPrice;
 

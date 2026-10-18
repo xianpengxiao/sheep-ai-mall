@@ -44,4 +44,14 @@ public interface PaymentService extends IService<PaymentRecord> {
      * @return 支付记录
      */
     PaymentRecord mockPay(Long orderId);
+
+    /**
+     * 售后退款：向用户退回指定金额。
+     * 模拟支付订单直接在本地记录退款成功；微信支付订单调用微信 V3 退款接口，
+     * 任何一步失败抛业务异常（由调用方事务回滚，商家可重试）。
+     *
+     * @param orderId 订单ID
+     * @param amount  退款金额（元）
+     */
+    void refund(Long orderId, java.math.BigDecimal amount);
 }

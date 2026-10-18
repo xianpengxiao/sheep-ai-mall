@@ -82,6 +82,12 @@ public class WechatPayConfig {
         return new NativePayService.Builder().config(config).build();
     }
 
+    /** 退款服务（售后退款用） */
+    @Bean
+    public com.wechat.pay.java.service.refund.RefundService refundService(RSAAutoCertificateConfig config) {
+        return new com.wechat.pay.java.service.refund.RefundService.Builder().config(config).build();
+    }
+
     /** 加载商户私钥：优先读文件路径，其次读配置内容 */
     private String loadPrivateKey() {
         String path = props.getPrivateKeyPath();

@@ -1,16 +1,20 @@
 package com.xs.sheepaimall.service.impl;
 
 import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.xs.sheepaimall.common.BizException;
 import com.xs.sheepaimall.dto.AddressSaveDTO;
 import com.xs.sheepaimall.dto.CartAddDTO;
+import com.xs.sheepaimall.dto.OrderCreateDTO;
+import com.xs.sheepaimall.dto.OrderItemDTO;
 import com.xs.sheepaimall.entity.ChatPendingOp;
 import com.xs.sheepaimall.mapper.ChatPendingOpMapper;
 import com.xs.sheepaimall.service.CartService;
 import com.xs.sheepaimall.service.OrderService;
 import com.xs.sheepaimall.service.PendingOperationService;
 import com.xs.sheepaimall.service.ShippingAddressService;
+import com.xs.sheepaimall.vo.ShippingAddressVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -19,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -51,6 +57,9 @@ public class PendingOperationServiceImpl implements PendingOperationService {
 
     @Autowired
     private CartService cartService;
+
+    @Autowired
+    private com.xs.sheepaimall.service.AfterSaleService afterSaleService;
 
     @Override
     public ChatPendingOp create(Long userId, Long sessionId, String opType, Map<String, Object> args, String displayText) {
@@ -154,8 +163,73 @@ public class PendingOperationServiceImpl implements PendingOperationService {
                 dto.setQuantity(args.get("quantity", Integer.class));
                 cartService.add(dto);
             }
+            case OP_CREATE_ORDER -> {
+                // AI 客服代下单：确认后按现有下单流程创建待支付订单（confirm 为 MVC 线程，UserContext 可用）
+                cn.hutool.json.JSONObject args = JSONUtil.parseObj(op.getArgsJson());
+                Long addressId = args.get("addressId", Long.class);
+                ShippingAddressVO address = shippingAddressService.getDetail(addressId, op.getUserId());
+                OrderCreateDTO dto = new OrderCreateDTO();
+                dto.setReceiverName(address.getReceiverName());
+                dto.setReceiverPhone(address.getReceiverPhone());
+                dto.setReceiverAddress(address.getProvince() + address.getCity()
+                        + address.getDistrict() + address.getDetailAddress());
+                dto.setRemark("AI客服代下单");
+                OrderItemDTO item = new OrderItemDTO();
+                item.setSpuId(args.get("spuId", Long.class));
+                item.setSkuId(args.get("skuId", Long.class));
+                item.setQuantity(args.get("quantity", Integer.class));
+                dto.setItems(List.of(item));
+                orderService.create(dto);
+            }
+            case OP_AFTER_SALE -> {
+                // AI 客服代申请售后：确认后创建待处理售后单（apply 内部全量复核校验，防 TOCTOU）
+                cn.hutool.json.JSONObject args = JSONUtil.parseObj(op.getArgsJson());
+                afterSaleService.apply(op.getUserId(),
+                        args.get("orderId", Long.class),
+                        args.get("type", String.class),
+                        args.get("reason", String.class));
+            }
             default -> throw new BizException("不支持的操作类型：" + op.getOpType());
         }
         log.info("操作单执行成功 operationId={}, opType={}", op.getId(), op.getOpType());
+    }
+
+    @Override
+    public Map<String, String> queryStates(List<String> operationIds, Long currentUserId) {
+        Map<String, String> result = new HashMap<>();
+        if (operationIds == null || operationIds.isEmpty()) {
+            return result;
+        }
+        // 仅查归属当前用户的操作单，避免越权探测他人操作单状态
+        List<ChatPendingOp> ops = chatPendingOpMapper.selectList(
+                new LambdaQueryWrapper<ChatPendingOp>()
+                        .in(ChatPendingOp::getId, operationIds.stream().distinct().toList())
+                        .eq(ChatPendingOp::getUserId, currentUserId));
+        LocalDateTime now = LocalDateTime.now();
+        for (ChatPendingOp op : ops) {
+            String state;
+            if (op.getStatus() == STATUS_EXECUTED) {
+                state = "DONE";
+            } else if (op.getStatus() == STATUS_CANCELLED) {
+                state = "CANCELLED";
+            } else if (op.getExpireTime() != null && op.getExpireTime().isBefore(now)) {
+                state = "EXPIRED";
+            } else {
+                state = "PENDING";
+            }
+            result.put(op.getId(), state);
+        }
+        return result;
+    }
+
+    @Override
+    public boolean existsPendingAfterSaleOp(Long userId, Long orderId) {
+        Long count = chatPendingOpMapper.selectCount(
+                new LambdaQueryWrapper<ChatPendingOp>()
+                        .eq(ChatPendingOp::getUserId, userId)
+                        .eq(ChatPendingOp::getOpType, OP_AFTER_SALE)
+                        .eq(ChatPendingOp::getStatus, STATUS_PENDING)
+                        .like(ChatPendingOp::getArgsJson, "\"orderId\":" + orderId));
+        return count != null && count > 0;
     }
 }

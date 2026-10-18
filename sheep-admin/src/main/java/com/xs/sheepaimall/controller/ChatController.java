@@ -2,6 +2,8 @@ package com.xs.sheepaimall.controller;
 
 import com.xs.sheepaimall.common.R;
 import com.xs.sheepaimall.dto.ChatAddCartOpDTO;
+import com.xs.sheepaimall.dto.ChatAfterSaleOpDTO;
+import com.xs.sheepaimall.dto.ChatCreateOrderOpDTO;
 import com.xs.sheepaimall.dto.ChatSendDTO;
 import com.xs.sheepaimall.dto.ChatTransferDTO;
 import com.xs.sheepaimall.dto.ConfirmDTO;
@@ -69,6 +71,57 @@ public class ChatController {
         marker.put("displayText", op.getDisplayText());
         marker.put("opType", op.getOpType());
         return R.ok(marker);
+    }
+
+    @Operation(summary = "操作单状态批量查询", description = "刷新历史确认卡时回查操作单最新状态：PENDING=待确认 / DONE=已执行 / CANCELLED=已取消 / EXPIRED=已过期。仅返回归属当前用户的操作单")
+    @GetMapping("/pending-ops/states")
+    public R<Map<String, String>> pendingOpStates(
+            @Parameter(description = "操作单ID列表（英文逗号分隔）") @RequestParam String ids) {
+        List<String> operationIds = java.util.Arrays.stream(ids.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+        return R.ok(pendingOperationService.queryStates(operationIds, UserContext.getUserId()));
+    }
+
+    @Operation(summary = "商品卡片规格列表", description = "商品卡片加购选规格用：返回该商品的在售 SKU（规格名/价格/库存），SKU ID 已字符串化，前端可直接使用")
+    @GetMapping("/goods/{spuId}/skus")
+    public R<List<Map<String, Object>>> goodsSkus(
+            @Parameter(description = "商品ID") @PathVariable Long spuId) {
+        return R.ok(chatService.listGoodsSkus(spuId));
+    }
+
+    @Operation(summary = "商品卡片购买操作单", description = "商品卡片的\"购买\"按钮调用：选规格/数量/地址后仅生成待确认操作单（CREATE_ORDER，走确认闸），用户确认后创建待支付订单（不代支付）")
+    @PostMapping("/create-order-op")
+    public R<Map<String, String>> createOrderOp(@Valid @RequestBody ChatCreateOrderOpDTO dto) {
+        ChatPendingOp op = chatService.createOrderOp(dto.getSpuId(), dto.getSkuId(),
+                dto.getQuantity(), dto.getAddressId(), dto.getSessionId());
+        Map<String, String> marker = new java.util.LinkedHashMap<>();
+        marker.put("operationId", op.getId());
+        marker.put("displayText", op.getDisplayText());
+        marker.put("opType", op.getOpType());
+        return R.ok(marker);
+    }
+
+    @Operation(summary = "订单卡片售后操作单", description = "订单卡片的\"申请售后\"按钮调用：仅生成待确认操作单（AFTER_SALE，走确认闸），用户确认后创建待处理售后单，退款由商家处理")
+    @PostMapping("/after-sale-op")
+    public R<Map<String, String>> afterSaleOp(@Valid @RequestBody ChatAfterSaleOpDTO dto) {
+        ChatPendingOp op = chatService.createAfterSaleOp(dto.getOrderId(), dto.getType(),
+                dto.getReason(), dto.getSessionId());
+        Map<String, String> marker = new java.util.LinkedHashMap<>();
+        marker.put("operationId", op.getId());
+        marker.put("displayText", op.getDisplayText());
+        marker.put("opType", op.getOpType());
+        return R.ok(marker);
+    }
+
+    @Operation(summary = "聊天对象聚合时间线", description = "单时间线展示用：按 (当前用户, merchantId) 合并全部会话消息，消息 ID 游标分页（beforeId=当前最早消息 id，不传=最新一页），正序返回；含 currentSessionId（发送消息复用）与 hasMore。仅本人数据")
+    @GetMapping("/messages/timeline")
+    public R<com.xs.sheepaimall.vo.ChatTimelineVO> timeline(
+            @Parameter(description = "商家ID（不传=平台聊天对象）") @RequestParam(required = false) Long merchantId,
+            @Parameter(description = "游标：早于该消息ID（不传=最新一页）") @RequestParam(required = false) Long beforeId,
+            @Parameter(description = "每页条数（默认20，最大50）") @RequestParam(defaultValue = "20") int size) {
+        return R.ok(chatService.getTimeline(merchantId, beforeId, size));
     }
 
     @Operation(summary = "会话列表", description = "获取当前用户的客服会话列表（按聊天对象隔离：merchantId 传值→该商家会话，不传→平台会话），按最后消息时间倒序")
